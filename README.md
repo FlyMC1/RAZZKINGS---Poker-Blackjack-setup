@@ -11,6 +11,7 @@ Play-money casino table host for Texas Hold'em, blackjack, and classic poker.
 5. Build a distributable release with `npm run dist`.
 6. On Linux, run the beta artifact at `release/RAZZKINGS-0.1.0.AppImage`.
 7. Use `launch-beta.sh` or `RAZZKINGS.desktop` if you want a simple desktop launcher for the beta build.
+8. On Windows, use the NSIS installer in `release/` after building; it is configured to launch RAZZKINGS automatically when installation finishes.
 
 ## Included in this first implementation
 
@@ -25,6 +26,8 @@ Play-money casino table host for Texas Hold'em, blackjack, and classic poker.
 This first usable release is a host-only tabletop app: the dealer uses the host camera feed, players and spectators join with uploaded pictures, and finished sessions can be reopened with a replay link.
 
 Release artifacts are written to `release/` when you run `npm run dist`.
+
+The Windows package is an auto-launching NSIS installer for the beta release.
 
 `npm start` now builds the frontend first and then launches the host app directly, so it can be used as the one-command local run path.
 
