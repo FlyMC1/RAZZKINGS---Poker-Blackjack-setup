@@ -1,0 +1,58 @@
+{
+  "name": "razzkings-poker-blackjack-setup",
+  "description": "Host-led play-money poker, blackjack, and classic poker table app.",
+  "author": "FlyMC1",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "npm run build && electron .",
+    "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "server": "node server/index.js",
+    "build": "vite build",
+    "dist": "npm run build && electron-builder",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.2"
+  },
+  "build": {
+    "appId": "com.razzkings.app",
+    "productName": "RAZZKINGS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "server/**",
+      "shared/**",
+      "README.md",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"]
+    }
+  }
+}

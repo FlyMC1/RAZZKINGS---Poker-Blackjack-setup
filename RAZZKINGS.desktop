@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RAZZKINGS
+Comment=Host-led play-money poker, blackjack, and classic poker table
+Exec=/bin/bash -lc '"$(dirname "$0")/launch-beta.sh"'
+Icon=razzkings
+Terminal=false
+Categories=Game;CardGame;
