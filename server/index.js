@@ -2,9 +2,17 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { networkInterfaces } from 'node:os';
 import { getMode } from '../shared/game.js';
 import { applyAction, finishGame, initializeGame } from './engine.js';
 import { loadReplay, saveReplay } from './replayStore.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(__dirname, '..');
+const distDir = join(projectRoot, 'dist');
 
 const app = express();
 const httpServer = createServer(app);
@@ -19,6 +27,10 @@ const tables = new Map();
 let serverStarted = false;
 
 app.use(express.json());
+
+if (existsSync(distDir)) {
+  app.use(express.static(distDir));
+}
 
 app.get('/health', (_, response) => {
   response.json({ ok: true, service: 'razzkings-server' });
@@ -68,6 +80,9 @@ app.post('/api/tables', (request, response) => {
     log: [],
     media: {},
     avatars: {},
+    playerJoinToken: randomUUID(),
+    spectatorJoinToken: randomUUID(),
+    baseUrl: getHostBaseUrl(request),
     updatedAt: new Date().toISOString(),
   };
 
@@ -237,8 +252,22 @@ app.get('/replay/:replayId', async (request, response) => {
   }
 });
 
+app.get('*', (request, response, next) => {
+  if (request.path.startsWith('/api') || request.path.startsWith('/socket.io')) {
+    next();
+    return;
+  }
+
+  if (!existsSync(distDir)) {
+    next();
+    return;
+  }
+
+  response.sendFile(join(distDir, 'index.html'));
+});
+
 io.on('connection', (socket) => {
-  socket.on('table:join', ({ tableId, name, role = 'player', avatarUrl = null }) => {
+  socket.on('table:join', ({ tableId, name, role = 'player', avatarUrl = null, token = '' }) => {
     const table = tables.get(tableId);
 
     if (!table) {
@@ -246,18 +275,40 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const normalizedRole = role === 'spectator' ? 'spectator' : 'player';
+
+    if (!validateJoinToken(table, normalizedRole, token)) {
+      socket.emit('table:error', 'Invalid join link token');
+      return;
+    }
+
     socket.join(tableId);
     socket.data.tableId = tableId;
     socket.data.name = name;
-    socket.data.role = role;
+    socket.data.role = normalizedRole;
     socket.data.avatarUrl = avatarUrl;
 
-    if (role === 'spectator') {
+    if (normalizedRole === 'spectator') {
       if (!table.spectators.some((spectator) => spectator.id === socket.id)) {
         table.spectators.push({ id: socket.id, name: name ?? 'Guest Spectator', avatarUrl: avatarUrl ?? null });
       }
     } else if (!table.players.some((player) => player.id === socket.id)) {
-      table.players.push({ id: socket.id, name: name ?? `Player ${table.players.length + 1}`, avatarUrl: avatarUrl ?? null });
+      if (table.phase !== 'draft') {
+        socket.emit('table:error', 'Table already started');
+        return;
+      }
+
+      if (table.players.length >= table.maxPlayers) {
+        socket.emit('table:error', 'All seats are filled');
+        return;
+      }
+
+      table.players.push({
+        id: socket.id,
+        name: name ?? `Player ${table.players.length + 1}`,
+        avatarUrl: avatarUrl ?? null,
+        seatIndex: nextAvailableSeatIndex(table.players, table.maxPlayers),
+      });
     }
 
     if (avatarUrl) {
@@ -459,4 +510,38 @@ function createPreviewFromGameState(gameState) {
     communityCards: gameState.communityCards ?? [],
     playerHands: (gameState.seats ?? []).map((seat) => seat.hand ?? []),
   };
+}
+
+function validateJoinToken(table, role, token) {
+  if (!token || typeof token !== 'string') {
+    return false;
+  }
+
+  return role === 'spectator' ? token === table.spectatorJoinToken : token === table.playerJoinToken;
+}
+
+function nextAvailableSeatIndex(players, maxPlayers) {
+  const used = new Set(players.map((player) => player.seatIndex).filter((seatIndex) => Number.isInteger(seatIndex)));
+
+  for (let seatIndex = 0; seatIndex < maxPlayers; seatIndex += 1) {
+    if (!used.has(seatIndex)) {
+      return seatIndex;
+    }
+  }
+
+  return players.length;
+}
+
+function getHostBaseUrl(request) {
+  const requestHost = request.get('host');
+
+  if (requestHost) {
+    return `http://${requestHost}`;
+  }
+
+  const lanAddress = Object.values(networkInterfaces())
+    .flat()
+    .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+
+  return `http://${lanAddress ?? 'localhost'}:3001`;
 }

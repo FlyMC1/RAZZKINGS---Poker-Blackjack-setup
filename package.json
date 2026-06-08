@@ -3,7 +3,7 @@
   "description": "Host-led play-money poker, blackjack, and classic poker table app.",
   "author": "FlyMC1",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "express": "^4.21.2",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "socket.io": "^4.8.1",
@@ -46,10 +47,14 @@
     ],
     "asar": true,
     "mac": {
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "signAndEditExecutable": false
     },
     "nsis": {
@@ -60,7 +65,9 @@
       "allowElevation": true
     },
     "linux": {
-      "target": ["AppImage"]
+      "target": [
+        "AppImage"
+      ]
     }
   }
 }

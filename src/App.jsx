@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
+import QRCode from 'qrcode';
 import logoUrl from '../472547406_9085022924947210_4288262986662297431_n.jpg';
 import { buildPreviewHands, gameModes, getMode } from '../shared/game.js';
 
-const apiBase = 'http://localhost:3001';
+const apiBase = getApiBaseUrl();
 const socket = io(apiBase, { autoConnect: false });
 
 const initialConfig = {
@@ -19,6 +20,8 @@ const emojiBar = ['⭐', '🔥', '🎯', '🎲', '🃏', '💎'];
 export default function App() {
   const profileStorageKey = 'razzkings-profile';
   const storedProfile = readStoredProfile(profileStorageKey);
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+
   const [config, setConfig] = useState(initialConfig);
   const [table, setTable] = useState(null);
   const [roomName, setRoomName] = useState(storedProfile.roomName);
@@ -26,28 +29,103 @@ export default function App() {
   const [avatarPreview, setAvatarPreview] = useState(storedProfile.avatarUrl);
   const [chatText, setChatText] = useState('');
   const [chatFeed, setChatFeed] = useState([]);
-  const [deviceClass, setDeviceClass] = useState(getDeviceClass());
-  const [joinRole, setJoinRole] = useState('player');
   const [isJoined, setIsJoined] = useState(false);
+  const [joinError, setJoinError] = useState('');
   const [mediaEnabled, setMediaEnabled] = useState(false);
-  const [queryTableId] = useState(() => new URLSearchParams(window.location.search).get('table'));
-  const [queryReplayId] = useState(() => new URLSearchParams(window.location.search).get('replay'));
   const [replayData, setReplayData] = useState(null);
+  const [playerQrCode, setPlayerQrCode] = useState('');
+  const [spectatorQrCode, setSpectatorQrCode] = useState('');
+  const [showPlayerQr, setShowPlayerQr] = useState(false);
+  const [showSpectatorQr, setShowSpectatorQr] = useState(false);
+
+  const queryTableId = urlParams.get('table');
+  const queryReplayId = urlParams.get('replay');
+  const queryRole = normalizeRole(urlParams.get('role'));
+  const queryToken = urlParams.get('token') ?? '';
+
+  const isLinkSession = Boolean(queryTableId && queryRole && queryToken);
+  const isHostView = !isLinkSession && !queryReplayId;
+
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
-  const autoJoinRef = useRef(false);
 
-  const mode = useMemo(() => getMode(config.modeId), [config.modeId]);
+  const mode = useMemo(() => getMode(table?.modeId ?? config.modeId), [config.modeId, table?.modeId]);
   const preview = useMemo(
     () => buildPreviewHands(config.modeId, config.maxPlayers, config.deckCount),
     [config.deckCount, config.maxPlayers, config.modeId],
   );
 
-  useEffect(() => {
-    if (storedProfile.roomName !== roomName || storedProfile.avatarUrl !== avatarUrl || storedProfile.joinRole !== joinRole) {
-      window.localStorage.setItem(profileStorageKey, JSON.stringify({ roomName, avatarUrl, joinRole }));
+  const seatCount = table?.maxPlayers ?? config.maxPlayers;
+  const stageState = table?.gameState ?? null;
+  const livePreview = table?.preview ?? preview;
+  const mySeat = stageState?.seats?.find((seat) => seat.socketId === socket.id) ?? null;
+  const isMyTurn = Boolean(stageState?.seats?.[stageState.currentSeatIndex]?.socketId === socket.id);
+
+  const playerJoinUrl = table
+    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&role=player&token=${table.playerJoinToken}`
+    : 'Create a table to generate links';
+  const spectatorJoinUrl = table
+    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&role=spectator&token=${table.spectatorJoinToken}`
+    : 'Create a table to generate links';
+  const replayUrl = table?.replayId ? `${table.baseUrl ?? apiBase}/?replay=${table.replayId}` : null;
+
+  const waitingLabel = queryRole === 'spectator' ? 'Watching table. Waiting for host to start.' : 'You are seated. Waiting for host to start.';
+
+  const displaySeats = useMemo(() => {
+    if (!seatCount) {
+      return [];
     }
-  }, [avatarUrl, joinRole, profileStorageKey, roomName, storedProfile.avatarUrl, storedProfile.joinRole, storedProfile.roomName]);
+
+    const arranged = Array.from({ length: seatCount }, (_, seatIndex) => ({
+      seatIndex,
+      name: `Seat ${seatIndex + 1}`,
+      avatarUrl: '',
+      hand: [],
+      occupied: false,
+    }));
+
+    if (stageState?.seats?.length) {
+      for (const seat of stageState.seats) {
+        const index = Number.isInteger(seat.seatIndex) ? seat.seatIndex : arranged.findIndex((entry) => !entry.occupied);
+        if (index < 0 || index >= arranged.length) {
+          continue;
+        }
+
+        arranged[index] = {
+          seatIndex: index,
+          name: seat.name ?? `Seat ${index + 1}`,
+          avatarUrl: seat.avatarUrl ?? '',
+          hand: seat.hand ?? [],
+          occupied: true,
+        };
+      }
+
+      return arranged;
+    }
+
+    for (const player of table?.players ?? []) {
+      const index = Number.isInteger(player.seatIndex) ? player.seatIndex : arranged.findIndex((entry) => !entry.occupied);
+      if (index < 0 || index >= arranged.length) {
+        continue;
+      }
+
+      arranged[index] = {
+        seatIndex: index,
+        name: player.name ?? `Seat ${index + 1}`,
+        avatarUrl: player.avatarUrl ?? '',
+        hand: livePreview.playerHands?.[index] ?? [],
+        occupied: true,
+      };
+    }
+
+    return arranged;
+  }, [livePreview.playerHands, seatCount, stageState?.seats, table?.players]);
+
+  useEffect(() => {
+    if (storedProfile.roomName !== roomName || storedProfile.avatarUrl !== avatarUrl) {
+      window.localStorage.setItem(profileStorageKey, JSON.stringify({ roomName, avatarUrl }));
+    }
+  }, [avatarUrl, profileStorageKey, roomName, storedProfile.avatarUrl, storedProfile.roomName]);
 
   useEffect(() => {
     if (!queryReplayId) {
@@ -92,56 +170,59 @@ export default function App() {
   }, [queryTableId]);
 
   useEffect(() => {
-    if (!queryTableId || !table?.id || autoJoinRef.current) {
-      return;
+    if (!table?.id || !isJoined) {
+      return undefined;
     }
-
-    autoJoinRef.current = true;
-    setIsJoined(true);
 
     if (!socket.connected) {
       socket.connect();
     }
 
-    socket.emit('table:join', {
-      tableId: table.id,
-      name: roomName,
-      role: joinRole,
-      avatarUrl,
-    });
-  }, [avatarUrl, joinRole, queryTableId, roomName, table?.id]);
-
-  useEffect(() => {
-    const onResize = () => setDeviceClass(getDeviceClass());
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
-    if (!table?.id || !isJoined) {
-      return undefined;
-    }
-
-    socket.connect();
-    socket.emit('table:join', { tableId: table.id, name: roomName, role: joinRole, avatarUrl });
-
-    const handleReconnect = () => {
-      socket.emit('table:join', { tableId: table.id, name: roomName, role: joinRole, avatarUrl });
-    };
-
     const handleUpdate = (nextTable) => setTable(nextTable);
-    const handleMessage = (entry) => setChatFeed((current) => [entry, ...current].slice(0, 20));
+    const handleMessage = (entry) => setChatFeed((current) => [entry, ...current].slice(0, 30));
+    const handleError = (message) => setJoinError(String(message ?? 'Unable to join table.'));
 
     socket.on('table:update', handleUpdate);
     socket.on('chat:message', handleMessage);
-    socket.on('connect', handleReconnect);
+    socket.on('table:error', handleError);
 
     return () => {
       socket.off('table:update', handleUpdate);
       socket.off('chat:message', handleMessage);
-      socket.off('connect', handleReconnect);
+      socket.off('table:error', handleError);
     };
-  }, [avatarUrl, isJoined, joinRole, roomName, table?.id]);
+  }, [isJoined, table?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!table?.id) {
+      setPlayerQrCode('');
+      setSpectatorQrCode('');
+      return undefined;
+    }
+
+    Promise.all([
+      QRCode.toDataURL(playerJoinUrl, { width: 200, margin: 1 }),
+      QRCode.toDataURL(spectatorJoinUrl, { width: 200, margin: 1 }),
+    ])
+      .then(([playerCode, spectatorCode]) => {
+        if (active) {
+          setPlayerQrCode(playerCode);
+          setSpectatorQrCode(spectatorCode);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPlayerQrCode('');
+          setSpectatorQrCode('');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [playerJoinUrl, spectatorJoinUrl, table?.id]);
 
   async function createTable() {
     const response = await fetch(`${apiBase}/api/tables`, {
@@ -165,16 +246,33 @@ export default function App() {
     setTable(nextTable);
   }
 
-  async function triggerAction(action) {
+  function joinTable() {
     if (!table?.id) {
       return;
     }
 
-    socket.emit('table:action', {
+    setJoinError('');
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    const role = isLinkSession ? queryRole : 'player';
+    const token = isLinkSession
+      ? queryToken
+      : role === 'spectator'
+        ? table.spectatorJoinToken
+        : table.playerJoinToken;
+
+    socket.emit('table:join', {
       tableId: table.id,
-      action,
-      amount: 10,
+      name: roomName,
+      role,
+      avatarUrl,
+      token,
     });
+
+    setIsJoined(true);
   }
 
   async function enableMedia() {
@@ -244,27 +342,20 @@ export default function App() {
     reader.readAsDataURL(file);
   }
 
-  function joinTable() {
-    if (!table?.id) {
+  function triggerAction(action) {
+    if (!table?.id || !isJoined) {
       return;
     }
 
-    setIsJoined(true);
-
-    if (!socket.connected) {
-      socket.connect();
-    }
-
-    socket.emit('table:join', {
+    socket.emit('table:action', {
       tableId: table.id,
-      name: roomName,
-      role: joinRole,
-      avatarUrl,
+      action,
+      amount: 10,
     });
   }
 
   function sendChat(emoji = '⭐') {
-    if (!table?.id || !chatText.trim()) {
+    if (!table?.id || !isJoined || !chatText.trim()) {
       return;
     }
 
@@ -277,281 +368,254 @@ export default function App() {
     setChatText('');
   }
 
-  const livePreview = table?.preview ?? preview;
-  const replayPreview = replayData?.gameState
-    ? {
-        dealerHand: replayData.gameState.dealerHand ?? [],
-        communityCards: replayData.gameState.communityCards ?? [],
-        playerHands: (replayData.gameState.seats ?? []).map((seat) => seat.hand ?? []),
-      }
-    : null;
-  const actionButtons = mode.actionSet;
-  const joinUrl = table ? `${window.location.origin}?table=${table.id}` : 'Create a table to generate a join link';
-  const joinLabel = joinRole === 'spectator' ? 'Join as spectator' : 'Join as player';
-  const replayUrl = table?.replayId ? `${window.location.origin}?replay=${table.replayId}` : null;
-  const hostAvatar = table?.players?.[0]?.avatarUrl ?? avatarPreview;
-
   if (queryReplayId && replayData) {
     return (
-      <div className={`app-shell device-${deviceClass}`}>
-        <main className="layout-grid replay-layout">
-          <section className="hero-card">
-            <div className="hero-top">
-              <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
-              <div>
-                <p className="eyebrow">Replay mode</p>
-                <h1>{replayData.tableName}</h1>
-                <p className="subtitle">Finished {new Date(replayData.finishedAt).toLocaleString()}</p>
-              </div>
+      <div className="app-shell replay-screen">
+        <section className="host-sidebar">
+          <div className="hero-top">
+            <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+            <div>
+              <p className="eyebrow">Replay mode</p>
+              <h1 className="brand-title">{replayData.tableName}</h1>
+              <p className="subtitle">Finished {new Date(replayData.finishedAt).toLocaleString()}</p>
             </div>
-            <div className="replay-summary">
-              <strong>{replayData.gameState?.result?.label ?? 'Replay loaded'}</strong>
-              <p>{replayData.gameState?.result ? JSON.stringify(replayData.gameState.result, null, 2) : 'No result data available.'}</p>
-            </div>
-            <div className="link-box">
-              <span>Replay link</span>
-              <strong>{`${window.location.origin}?replay=${queryReplayId}`}</strong>
-            </div>
-          </section>
-
-          <section className="stage-card">
-            <div className="stage-header">
-              <div>
-                <p className="eyebrow">{getMode(replayData.modeId).label}</p>
-                <h2>Replay table</h2>
-              </div>
-              <div className="status-pill">finished</div>
-            </div>
-            <div className="stage-grid">
-              <article className="seat seat-dealer">
-                <span>Dealer seat</span>
-                <div className="card-stack">
-                  {replayPreview.dealerHand.length ? replayPreview.dealerHand.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-                </div>
-              </article>
-              <article className="seat seat-community">
-                <span>Community / board</span>
-                <div className="card-stack board-stack">
-                  {replayPreview.communityCards.length ? replayPreview.communityCards.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-                </div>
-              </article>
-              {replayPreview.playerHands.map((hand, index) => (
-                <article className="seat" key={`replay-seat-${index}`}>
-                  <span>{replayData.players?.[index]?.name ?? `Seat ${index + 1}`}</span>
-                  <div className="card-stack">
-                    {hand.length ? hand.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        </main>
+          </div>
+          <div className="link-box">
+            <span>Replay link</span>
+            <strong>{`${apiBase}/?replay=${queryReplayId}`}</strong>
+          </div>
+        </section>
+        <section className="table-stage">
+          <header className="table-head">
+            <h2>Replay Table</h2>
+            <div className="status-pill">finished</div>
+          </header>
+          <div className="table-felt">
+            <SeatCards label="Dealer" cards={replayData.gameState?.dealerHand ?? []} />
+            <SeatCards label="Board" cards={replayData.gameState?.communityCards ?? []} isBoard />
+            {(replayData.gameState?.seats ?? []).map((seat, index) => (
+              <SeatCards key={`replay-seat-${seat.id ?? index}`} label={seat.name ?? `Seat ${index + 1}`} cards={seat.hand ?? []} />
+            ))}
+          </div>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className={`app-shell device-${deviceClass}`}>
-      <main className="layout-grid">
-        <section className="hero-card">
-          <div className="hero-top">
-            <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
-            <div>
-              <p className="eyebrow">Host device control room</p>
-              <h1>RAZZKINGS</h1>
-              <p className="subtitle">
-                Launch a play-money poker room with live players, spectators, chat, and replay-ready sessions.
-              </p>
-            </div>
-          </div>
-
-          <div className="form-grid">
-            <label>
-              Game
-              <select
-                value={config.modeId}
-                onChange={(event) => setConfig((current) => ({ ...current, modeId: event.target.value }))}
-              >
-                {gameModes.map((gameMode) => (
-                  <option key={gameMode.id} value={gameMode.id}>
-                    {gameMode.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Starting chips
-              <input
-                type="number"
-                min="100"
-                step="100"
-                value={config.startingChips}
-                onChange={(event) => setConfig((current) => ({ ...current, startingChips: Number(event.target.value) }))}
-              />
-            </label>
-
-            <label>
-              Deck count
-              <input
-                type="number"
-                min={mode.deckRange[0]}
-                max={mode.deckRange[1]}
-                value={config.deckCount}
-                onChange={(event) => setConfig((current) => ({ ...current, deckCount: Number(event.target.value) }))}
-              />
-            </label>
-
-            <label>
-              Max players
-              <input
-                type="number"
-                min="2"
-                max={mode.seats}
-                value={config.maxPlayers}
-                onChange={(event) => setConfig((current) => ({ ...current, maxPlayers: Number(event.target.value) }))}
-              />
-            </label>
-
-            <label className="wide">
-              Table name
-              <input
-                value={config.tableName}
-                onChange={(event) => setConfig((current) => ({ ...current, tableName: event.target.value }))}
-              />
-            </label>
-
-            <label className="wide">
-              Upload your picture
-              <input type="file" accept="image/*" onChange={handleAvatarUpload} />
-            </label>
-
-            {avatarPreview ? (
-              <div className="avatar-preview wide">
-                <img src={avatarPreview} alt="Uploaded avatar preview" />
-                <span>Your uploaded picture will show on your seat.</span>
+    <div className="app-shell">
+      <main className={`app-layout ${isHostView ? 'host-mode' : 'join-mode'}`}>
+        {isHostView ? (
+          <section className="host-sidebar">
+            <div className="hero-top">
+              <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+              <div>
+                <p className="eyebrow">Host control</p>
+                <h1 className="brand-title">RAZZKINGS</h1>
+                <p className="subtitle">Host from this PC with separate player and spectator links.</p>
               </div>
-            ) : null}
-          </div>
+            </div>
 
-          <div className="action-row">
-            <button className="primary" onClick={createTable}>Create table</button>
-            <button className="secondary" onClick={startTable} disabled={!table}>
-              Start live session
+            <div className="form-grid">
+              <label>
+                Game
+                <select
+                  value={config.modeId}
+                  onChange={(event) => setConfig((current) => ({ ...current, modeId: event.target.value }))}
+                >
+                  {gameModes.map((gameMode) => (
+                    <option key={gameMode.id} value={gameMode.id}>
+                      {gameMode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Starting chips
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  value={config.startingChips}
+                  onChange={(event) => setConfig((current) => ({ ...current, startingChips: Number(event.target.value) }))}
+                />
+              </label>
+              <label>
+                Deck count
+                <input
+                  type="number"
+                  min={mode.deckRange[0]}
+                  max={mode.deckRange[1]}
+                  value={config.deckCount}
+                  onChange={(event) => setConfig((current) => ({ ...current, deckCount: Number(event.target.value) }))}
+                />
+              </label>
+              <label>
+                Max players
+                <input
+                  type="number"
+                  min="2"
+                  max={mode.seats}
+                  value={config.maxPlayers}
+                  onChange={(event) => setConfig((current) => ({ ...current, maxPlayers: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="wide">
+                Table name
+                <input value={config.tableName} onChange={(event) => setConfig((current) => ({ ...current, tableName: event.target.value }))} />
+              </label>
+              <label className="wide">
+                Host picture
+                <input type="file" accept="image/*" onChange={handleAvatarUpload} />
+              </label>
+              {avatarPreview ? (
+                <div className="avatar-preview wide">
+                  <img src={avatarPreview} alt="Host avatar preview" />
+                  <span>Used for your own seat only.</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="action-row">
+              <button className="primary" onClick={createTable}>Create table</button>
+              <button className="secondary" onClick={startTable} disabled={!table}>Start game</button>
+              <button className="ghost" onClick={joinTable} disabled={!table || isJoined}>Join dealer seat</button>
+            </div>
+
+            <div className="link-box">
+              <span>Player join link</span>
+              <strong>{playerJoinUrl}</strong>
+              <div className="link-tools">
+                <button className="ghost" type="button" onClick={() => setShowPlayerQr((current) => !current)} disabled={!playerQrCode}>
+                  {showPlayerQr ? 'Hide QR' : 'Show QR'}
+                </button>
+              </div>
+              {showPlayerQr && playerQrCode ? (
+                <img className="qr-image" src={playerQrCode} alt="Player join QR code" />
+              ) : null}
+            </div>
+            <div className="link-box">
+              <span>Spectator watch link</span>
+              <strong>{spectatorJoinUrl}</strong>
+              <div className="link-tools">
+                <button className="ghost" type="button" onClick={() => setShowSpectatorQr((current) => !current)} disabled={!spectatorQrCode}>
+                  {showSpectatorQr ? 'Hide QR' : 'Show QR'}
+                </button>
+              </div>
+              {showSpectatorQr && spectatorQrCode ? (
+                <img className="qr-image" src={spectatorQrCode} alt="Spectator join QR code" />
+              ) : null}
+            </div>
+          </section>
+        ) : (
+          <section className="join-panel">
+            <div className="hero-top">
+              <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+              <div>
+                <p className="eyebrow">{queryRole === 'spectator' ? 'Spectator entry' : 'Player entry'}</p>
+                <h1 className="brand-title">Join Table</h1>
+                <p className="subtitle">Enter your name and optional picture, then take your seat.</p>
+              </div>
+            </div>
+            <div className="form-grid">
+              <label className="wide">
+                Display name
+                <input value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="Your name" />
+              </label>
+              <label className="wide">
+                Picture (optional)
+                <input type="file" accept="image/*" onChange={handleAvatarUpload} />
+              </label>
+              {avatarPreview ? (
+                <div className="avatar-preview wide">
+                  <img src={avatarPreview} alt="Player avatar preview" />
+                  <span>This image will only appear on your own seat.</span>
+                </div>
+              ) : null}
+            </div>
+            <button className="primary" type="button" onClick={joinTable} disabled={!table || isJoined}>
+              {queryRole === 'spectator' ? 'Join as spectator' : 'Join and take seat'}
             </button>
-          </div>
+            {joinError ? <p className="error-text">{joinError}</p> : null}
+            {isJoined && table?.phase === 'draft' ? <p className="muted waiting-text">{waitingLabel}</p> : null}
+          </section>
+        )}
 
-          <div className="link-box">
-            <span>Player / spectator link</span>
-            <strong>{joinUrl}</strong>
-          </div>
-        </section>
-
-        <section className="stage-card">
-          <div className="stage-header">
+        <section className="table-stage">
+          <header className="table-head">
             <div>
               <p className="eyebrow">{mode.label}</p>
               <h2>{table?.tableName ?? config.tableName}</h2>
             </div>
             <div className="status-pill">{table?.phase ?? 'draft'}</div>
+          </header>
+
+          <div className="host-feed-strip">
+            <div className="host-feed-text">
+              <strong>Host feed</strong>
+              <span>Top-center feed for all viewers</span>
+            </div>
+            <video className="media-preview" ref={localVideoRef} autoPlay playsInline muted />
+            {isHostView ? (
+              <div className="media-actions">
+                <button className="secondary" type="button" onClick={enableMedia} disabled={mediaEnabled}>Start feed</button>
+                <button className="secondary" type="button" onClick={disableMedia} disabled={!mediaEnabled}>Stop feed</button>
+              </div>
+            ) : null}
           </div>
 
-          <div className="stage-grid">
-            <article className="seat seat-dealer">
-              <span>Dealer seat</span>
-              <SeatAvatar avatarUrl={hostAvatar} label="Host image" />
-              <div className="card-stack">
-                {livePreview.dealerHand.length ? livePreview.dealerHand.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-              </div>
-            </article>
+          <div className="table-felt">
+            <SeatCards label="Dealer" cards={stageState?.dealerHand ?? livePreview.dealerHand ?? []} avatarUrl={isHostView ? avatarPreview : ''} />
+            <SeatCards label="Community" cards={stageState?.communityCards ?? livePreview.communityCards ?? []} isBoard />
 
-            <article className="seat seat-community">
-              <span>Community / board</span>
-              <div className="card-stack board-stack">
-                {livePreview.communityCards.length ? livePreview.communityCards.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-              </div>
-            </article>
-
-            {livePreview.playerHands.slice(0, config.maxPlayers).map((hand, index) => (
-              <article className="seat" key={`seat-${index}`}>
-                <span>Seat {index + 1}</span>
-                <SeatAvatar avatarUrl={table?.players?.[index]?.avatarUrl ?? avatarPreview} label="Player image" />
-                <div className="card-stack">
-                  {hand.length ? hand.map((card) => <CardChip key={card.id} card={card} />) : <SeatPlaceholder />}
-                </div>
-              </article>
-            ))}
+            <div className="seat-ring">
+              {displaySeats.map((seat) => (
+                <article className={`seat ${seat.occupied ? 'occupied' : ''}`} key={`seat-${seat.seatIndex}`}>
+                  <span>{seat.name}</span>
+                  <SeatAvatar avatarUrl={seat.avatarUrl} label={seat.name} />
+                  <div className="card-stack">
+                    {seat.hand.length ? seat.hand.map((card, index) => <CardView key={card.id} card={card} index={index} />) : <SeatPlaceholder />}
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
-        </section>
 
-        <aside className="side-panel">
-          <section className="panel-card">
-            <h3>Join table</h3>
-            <div className="chat-input-row">
-              <input value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="Your name" />
+          <footer className="player-hand-bar">
+            <div>
+              <strong>{mySeat?.name ?? 'Your hand'}</strong>
+              <p className="muted">{isJoined ? (isMyTurn ? 'Your turn now.' : 'Waiting for your turn.') : 'Join table to take actions.'}</p>
             </div>
-            <div className="chat-input-row">
-              <select value={joinRole} onChange={(event) => setJoinRole(event.target.value)}>
-                <option value="player">Player</option>
-                <option value="spectator">Spectator</option>
-              </select>
+            <div className="card-stack hand-stack">
+              {(mySeat?.hand ?? []).length
+                ? mySeat.hand.map((card, index) => <CardView key={`my-${card.id}`} card={card} index={index} />)
+                : <SeatPlaceholder text="Your cards appear here" />}
             </div>
-            <div className="chat-input-row">
-              <input type="file" accept="image/*" onChange={handleAvatarUpload} />
-            </div>
-            <button className="primary" type="button" onClick={joinTable} disabled={!table}>
-              {joinLabel}
-            </button>
-          </section>
-
-          <section className="panel-card">
-            <h3>Turn actions</h3>
-            <div className="button-stack">
-              {actionButtons.map((action) => (
-                <button key={action} className="ghost" type="button" onClick={() => triggerAction(action)}>
+            <div className="button-stack hand-actions">
+              {mode.actionSet.map((action) => (
+                <button key={action} className="ghost" type="button" onClick={() => triggerAction(action)} disabled={!isJoined || !isMyTurn || table?.phase !== 'live'}>
                   {action}
                 </button>
               ))}
+              {isHostView ? (
+                <button className="secondary" type="button" onClick={() => triggerAction('finish')} disabled={!isJoined || table?.phase !== 'live'}>
+                  Finish & save replay
+                </button>
+              ) : null}
             </div>
-            <button className="secondary action-wide" type="button" onClick={() => triggerAction('finish')}>
-              Finish table and save replay
-            </button>
-          </section>
+          </footer>
+        </section>
 
-          <section className="panel-card">
-            <h3>Host live feed</h3>
-            <div className="media-actions">
-              <button className="secondary" type="button" onClick={enableMedia} disabled={mediaEnabled}>
-                Start host camera and mic
-              </button>
-              <button className="secondary" type="button" onClick={disableMedia} disabled={!mediaEnabled}>
-                Stop host camera and mic
-              </button>
-            </div>
-            <video className="media-preview" ref={localVideoRef} autoPlay playsInline muted />
-            <div className="media-grid">
-              <div className="media-slot active">Host feed shown to table</div>
-              <div className="media-slot">Player images only</div>
-              <div className="media-slot">No player video</div>
-              <div className="media-slot">Replay ready</div>
-            </div>
-            <div className="roster-list">
-              <div className="roster-item">
-                <strong>Host</strong>
-                <span>live feed only</span>
-              </div>
-            </div>
-          </section>
-
+        <aside className="chat-lane">
           <section className="panel-card chat-panel">
-            <h3>Spectator chat</h3>
+            <h3>Table chat</h3>
             <div className="chat-input-row">
               <input value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Type a message" />
-              <button className="primary" type="button" onClick={() => sendChat()}>Send</button>
+              <button className="primary" type="button" onClick={() => sendChat()} disabled={!isJoined}>Send</button>
             </div>
             <div className="emoji-row">
               {emojiBar.map((emoji) => (
-                <button key={emoji} className="emoji-button" type="button" onClick={() => sendChat(emoji)}>
+                <button key={emoji} className="emoji-button" type="button" onClick={() => sendChat(emoji)} disabled={!isJoined}>
                   {emoji}
                 </button>
               ))}
@@ -572,25 +636,45 @@ export default function App() {
   );
 }
 
-function CardChip({ card }) {
+function SeatCards({ label, cards, avatarUrl = '', isBoard = false }) {
   return (
-    <div className={`card-chip suit-${card.suit}`}>
-      <span>{card.rank}</span>
-      <small>{card.suit}</small>
+    <article className={`table-row ${isBoard ? 'table-board' : ''}`}>
+      <span>{label}</span>
+      {avatarUrl ? <SeatAvatar avatarUrl={avatarUrl} label={label} /> : null}
+      <div className="card-stack center-stack">
+        {cards.length ? cards.map((card, index) => <CardView key={card.id} card={card} index={index} />) : <SeatPlaceholder />}
+      </div>
+    </article>
+  );
+}
+
+function CardView({ card, index }) {
+  const suitMap = {
+    spades: '♠',
+    hearts: '♥',
+    diamonds: '♦',
+    clubs: '♣',
+  };
+
+  return (
+    <div className={`card-face suit-${card.suit}`} style={{ '--deal-delay': `${index * 90}ms` }}>
+      <span className="card-corner">{card.rank}{suitMap[card.suit] ?? '?'}</span>
+      <strong>{suitMap[card.suit] ?? '?'}</strong>
+      <span className="card-corner inverted">{card.rank}{suitMap[card.suit] ?? '?'}</span>
     </div>
   );
 }
 
 function SeatAvatar({ avatarUrl, label }) {
   if (!avatarUrl) {
-    return <div className="seat-placeholder">{label}</div>;
+    return <div className="seat-placeholder tiny">No image</div>;
   }
 
   return <img className="seat-avatar" src={avatarUrl} alt={label} />;
 }
 
-function SeatPlaceholder() {
-  return <div className="seat-placeholder">Awaiting deal</div>;
+function SeatPlaceholder({ text = 'Awaiting deal' }) {
+  return <div className="seat-placeholder">{text}</div>;
 }
 
 function ChatEntry({ entry }) {
@@ -602,37 +686,44 @@ function ChatEntry({ entry }) {
   );
 }
 
-function getDeviceClass() {
-  if (window.innerWidth < 720) {
-    return 'mobile';
-  }
-
-  if (window.innerWidth < 1100) {
-    return 'tablet';
-  }
-
-  return 'desktop';
-}
-
 function readStoredProfile(profileStorageKey) {
   if (typeof window === 'undefined') {
-    return { roomName: 'Dealer HQ', avatarUrl: '', joinRole: 'player' };
+    return { roomName: 'Player', avatarUrl: '' };
   }
 
   try {
     const stored = window.localStorage.getItem(profileStorageKey);
 
     if (!stored) {
-      return { roomName: 'Dealer HQ', avatarUrl: '', joinRole: 'player' };
+      return { roomName: 'Player', avatarUrl: '' };
     }
 
     const parsed = JSON.parse(stored);
     return {
-      roomName: typeof parsed.roomName === 'string' && parsed.roomName.trim() ? parsed.roomName : 'Dealer HQ',
+      roomName: typeof parsed.roomName === 'string' && parsed.roomName.trim() ? parsed.roomName : 'Player',
       avatarUrl: typeof parsed.avatarUrl === 'string' ? parsed.avatarUrl : '',
-      joinRole: parsed.joinRole === 'spectator' ? 'spectator' : 'player',
     };
   } catch {
-    return { roomName: 'Dealer HQ', avatarUrl: '', joinRole: 'player' };
+    return { roomName: 'Player', avatarUrl: '' };
   }
+}
+
+function normalizeRole(role) {
+  if (role === 'spectator') {
+    return 'spectator';
+  }
+
+  if (role === 'player') {
+    return 'player';
+  }
+
+  return '';
+}
+
+function getApiBaseUrl() {
+  if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+    return window.location.origin;
+  }
+
+  return 'http://localhost:3001';
 }
