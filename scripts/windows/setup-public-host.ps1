@@ -5,6 +5,12 @@ $scriptRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent $scriptRoot
 $launcherCmd = Join-Path $repoRoot 'start-public-host.cmd'
 
+function Test-IsAdmin {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Write-Step {
     param([string]$Message)
     Write-Host ''
@@ -19,6 +25,22 @@ function Confirm-Continue {
     param([string]$Question)
     $answer = Read-Host "$Question (Y/N)"
     return $answer -match '^(y|yes)$'
+}
+
+function Confirm-Required {
+    param([string]$Question)
+    while ($true) {
+        $answer = Read-Host "$Question (Y/N)"
+        if ($answer -match '^(y|yes)$') {
+            return $true
+        }
+
+        if ($answer -match '^(n|no)$') {
+            return $false
+        }
+
+        Write-Host '[setup] Please enter Y or N.' -ForegroundColor Yellow
+    }
 }
 
 function Ensure-Winget {
@@ -42,11 +64,12 @@ function Ensure-Command {
     }
 
     Write-Step "$InstallDisplayName is missing."
-    if (-not (Confirm-Continue "Install $InstallDisplayName now using winget?")) {
+    if (-not (Confirm-Required "Install $InstallDisplayName now using winget?")) {
         throw "$InstallDisplayName is required. Setup cancelled by user."
     }
 
-    winget install --id $WingetId --exact --accept-package-agreements --accept-source-agreements --silent
+    Write-Host "[setup] Installing $InstallDisplayName. This can take a few minutes..." -ForegroundColor Cyan
+    winget install --id $WingetId --exact --accept-package-agreements --accept-source-agreements
 
     if (-not (Get-Command $CommandName -ErrorAction SilentlyContinue)) {
         $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
@@ -91,8 +114,15 @@ Write-Host ' RAZZKINGS Windows Public Host Setup'
 Write-Host '====================================================='
 Write-Host 'This setup will install prerequisites, configure project dependencies,'
 Write-Host 'and create a Desktop shortcut for one-click public hosting.'
+Write-Host ''
+Write-Host '[setup] Keep this window open and respond to prompts as they appear.' -ForegroundColor Yellow
+if (-not (Test-IsAdmin)) {
+    Write-Host '[setup] Tip: if package installs fail, re-run this setup as Administrator.' -ForegroundColor Yellow
+}
 
-Pause-Step
+if (-not (Confirm-Required 'Start setup now?')) {
+    throw 'Setup cancelled by user.'
+}
 
 Write-Step 'Checking winget availability.'
 Ensure-Winget
@@ -103,7 +133,7 @@ Ensure-Command -CommandName 'node' -WingetId 'OpenJS.NodeJS.LTS' -InstallDisplay
 Write-Step 'Checking cloudflared installation.'
 Ensure-Command -CommandName 'cloudflared' -WingetId 'Cloudflare.cloudflared' -InstallDisplayName 'cloudflared'
 
-if (Confirm-Continue 'Run npm install now?') {
+if (Confirm-Required 'Run npm install now?') {
     Ensure-NpmInstall
 }
 else {
@@ -118,4 +148,4 @@ Write-Host '[setup] Setup complete.' -ForegroundColor Green
 Write-Host '[setup] Use the Desktop shortcut "RAZZKINGS Public Host" to launch hosting sessions.'
 Write-Host '[setup] Keep the launcher terminal open while players are connected.'
 Write-Host ''
-Pause-Step
+Read-Host 'Press Enter to close this setup window'
