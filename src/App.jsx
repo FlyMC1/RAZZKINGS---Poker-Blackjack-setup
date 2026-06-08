@@ -80,6 +80,9 @@ export default function App() {
   const livePreview = table?.preview ?? preview;
   const mySeat = stageState?.seats?.find((seat) => seat.socketId === socket.id) ?? null;
   const isMyTurn = Boolean(stageState?.seats?.[stageState.currentSeatIndex]?.socketId === socket.id);
+  const currentTurnSeatIndex = Number.isInteger(stageState?.seats?.[stageState.currentSeatIndex]?.seatIndex)
+    ? stageState.seats[stageState.currentSeatIndex].seatIndex
+    : -1;
 
   const playerJoinUrl = table
     ? `${table.baseUrl ?? apiBase}/?table=${table.id}&role=player&token=${table.playerJoinToken}`
@@ -684,16 +687,43 @@ export default function App() {
           ) : null}
 
           <div className="table-felt">
-            <SeatCards label="Dealer" cards={stageState?.dealerHand ?? livePreview.dealerHand ?? []} avatarUrl={isHostView ? avatarPreview : ''} />
-            <SeatCards label="Community" cards={stageState?.communityCards ?? livePreview.communityCards ?? []} isBoard />
+            <div className="table-arena">
+              <div className="table-surface">
+                <div className="dealer-lane">
+                  <span>Dealer</span>
+                  {isHostView ? <SeatAvatar avatarUrl={avatarPreview} label="Dealer" /> : null}
+                  <div className="card-stack center-stack">
+                    {(stageState?.dealerHand ?? livePreview.dealerHand ?? []).length
+                      ? (stageState?.dealerHand ?? livePreview.dealerHand ?? []).map((card, index) => (
+                        <CardView key={`dealer-${card.id}`} card={card} index={index} />
+                      ))
+                      : <SeatPlaceholder />}
+                  </div>
+                </div>
 
-            <div className="seat-ring">
-              {displaySeats.map((seat) => (
-                <article className={`seat ${seat.occupied ? 'occupied' : ''}`} key={`seat-${seat.seatIndex}`}>
+                <div className="community-lane">
+                  <span>Community</span>
+                  <div className="card-stack center-stack">
+                    {(stageState?.communityCards ?? livePreview.communityCards ?? []).length
+                      ? (stageState?.communityCards ?? livePreview.communityCards ?? []).map((card, index) => (
+                        <CardView key={`community-${card.id}`} card={card} index={index} />
+                      ))
+                      : <SeatPlaceholder />}
+                  </div>
+                </div>
+              </div>
+
+              {displaySeats.map((seat, seatOrderIndex) => (
+                <article
+                  className={`arena-seat ${seat.occupied ? 'occupied' : ''} ${seat.seatIndex === currentTurnSeatIndex ? 'is-active-turn' : ''}`}
+                  key={`arena-seat-${seat.seatIndex}`}
+                  style={getSeatOrbitStyle(seatOrderIndex, displaySeats.length)}
+                >
+                  {seat.seatIndex === currentTurnSeatIndex ? <div className="turn-arrow">➤</div> : null}
                   <span>{seat.name}</span>
                   <SeatAvatar avatarUrl={seat.avatarUrl} label={seat.name} />
                   <div className="card-stack">
-                    {seat.hand.length ? seat.hand.map((card, index) => <CardView key={card.id} card={card} index={index} />) : <SeatPlaceholder />}
+                    {seat.hand.length ? seat.hand.map((card, index) => <CardView key={`seat-${seat.seatIndex}-${card.id}`} card={card} index={index} />) : <SeatPlaceholder />}
                   </div>
                 </article>
               ))}
@@ -791,6 +821,18 @@ function SeatCards({ label, cards, avatarUrl = '', isBoard = false }) {
       </div>
     </article>
   );
+}
+
+function getSeatOrbitStyle(index, total) {
+  const count = Math.max(1, total);
+  const angle = ((index / count) * Math.PI * 2) - (Math.PI / 2);
+  const x = 50 + (40 * Math.cos(angle));
+  const y = 50 + (35 * Math.sin(angle));
+
+  return {
+    left: `${x}%`,
+    top: `${y}%`,
+  };
 }
 
 function CardView({ card, index }) {
