@@ -13,6 +13,7 @@ const initialConfig = {
   startingChips: 1000,
   maxPlayers: 6,
   tableName: 'RAZZKINGS Night Table',
+  publicBaseUrl: '',
 };
 
 const emojiBar = ['⭐', '🔥', '🎯', '🎲', '🃏', '💎'];
@@ -225,10 +226,15 @@ export default function App() {
   }, [playerJoinUrl, spectatorJoinUrl, table?.id]);
 
   async function createTable() {
+    const payload = {
+      ...config,
+      publicBaseUrl: config.publicBaseUrl.trim(),
+    };
+
     const response = await fetch(`${apiBase}/api/tables`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config),
+      body: JSON.stringify(payload),
     });
 
     const nextTable = await response.json();
@@ -241,7 +247,15 @@ export default function App() {
       return;
     }
 
+    setJoinError('');
     const response = await fetch(`${apiBase}/api/tables/${table.id}/start`, { method: 'POST' });
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({ error: 'Unable to start table.' }));
+      setJoinError(errorPayload.error ?? 'Unable to start table.');
+      return;
+    }
+
     const nextTable = await response.json();
     setTable(nextTable);
   }
@@ -454,7 +468,7 @@ export default function App() {
                 Max players
                 <input
                   type="number"
-                  min="2"
+                  min="1"
                   max={mode.seats}
                   value={config.maxPlayers}
                   onChange={(event) => setConfig((current) => ({ ...current, maxPlayers: Number(event.target.value) }))}
@@ -464,6 +478,17 @@ export default function App() {
                 Table name
                 <input value={config.tableName} onChange={(event) => setConfig((current) => ({ ...current, tableName: event.target.value }))} />
               </label>
+              <label className="wide">
+                Public URL override (optional)
+                <input
+                  value={config.publicBaseUrl}
+                  placeholder="https://your-public-host.example"
+                  onChange={(event) => setConfig((current) => ({ ...current, publicBaseUrl: event.target.value }))}
+                />
+              </label>
+              <p className="muted wide">
+                Use this only when sharing outside your local network, such as a router-forwarded domain or tunnel URL.
+              </p>
               <label className="wide">
                 Host picture
                 <input type="file" accept="image/*" onChange={handleAvatarUpload} />
@@ -481,6 +506,7 @@ export default function App() {
               <button className="secondary" onClick={startTable} disabled={!table}>Start game</button>
               <button className="ghost" onClick={joinTable} disabled={!table || isJoined}>Join dealer seat</button>
             </div>
+            {joinError ? <p className="error-text">{joinError}</p> : null}
 
             <div className="link-box">
               <span>Player join link</span>

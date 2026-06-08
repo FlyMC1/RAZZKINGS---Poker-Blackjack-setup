@@ -63,6 +63,7 @@ app.post('/api/tables', (request, response) => {
     startingChips = 1000,
     maxPlayers = 8,
     tableName = 'RAZZKINGS Night Table',
+    publicBaseUrl = '',
   } = request.body ?? {};
 
   const mode = getMode(modeId);
@@ -73,7 +74,7 @@ app.post('/api/tables', (request, response) => {
     modeId: mode.id,
     deckCount,
     startingChips,
-    maxPlayers: Math.min(maxPlayers, mode.seats),
+    maxPlayers: Math.max(1, Math.min(Number(maxPlayers) || 1, mode.seats)),
     phase: 'draft',
     players: [],
     spectators: [],
@@ -82,7 +83,7 @@ app.post('/api/tables', (request, response) => {
     avatars: {},
     playerJoinToken: randomUUID(),
     spectatorJoinToken: randomUUID(),
-    baseUrl: getHostBaseUrl(request),
+    baseUrl: getHostBaseUrl(request, publicBaseUrl),
     updatedAt: new Date().toISOString(),
   };
 
@@ -95,6 +96,11 @@ app.post('/api/tables/:tableId/start', (request, response) => {
 
   if (!table) {
     response.status(404).json({ error: 'Table not found' });
+    return;
+  }
+
+  if (table.players.length < 1) {
+    response.status(400).json({ error: 'At least one player must join before starting.' });
     return;
   }
 
@@ -532,11 +538,20 @@ function nextAvailableSeatIndex(players, maxPlayers) {
   return players.length;
 }
 
-function getHostBaseUrl(request) {
-  const requestHost = request.get('host');
+function getHostBaseUrl(request, publicBaseUrl = '') {
+  const explicitBase = sanitizeBaseUrl(publicBaseUrl) || sanitizeBaseUrl(process.env.PUBLIC_BASE_URL || '');
 
-  if (requestHost) {
-    return `http://${requestHost}`;
+  if (explicitBase) {
+    return explicitBase;
+  }
+
+  const requestHost = request.get('host') || '';
+  const hostName = requestHost.split(':')[0].trim().toLowerCase();
+
+  if (hostName && !isLocalHostName(hostName)) {
+    const forwardedProto = request.get('x-forwarded-proto');
+    const protocol = forwardedProto === 'https' ? 'https' : 'http';
+    return `${protocol}://${requestHost}`;
   }
 
   const lanAddress = Object.values(networkInterfaces())
@@ -544,4 +559,25 @@ function getHostBaseUrl(request) {
     .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
 
   return `http://${lanAddress ?? 'localhost'}:3001`;
+}
+
+function sanitizeBaseUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '';
+    }
+
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+function isLocalHostName(hostName) {
+  return hostName === 'localhost' || hostName === '127.0.0.1' || hostName === '::1';
 }
