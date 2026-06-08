@@ -301,8 +301,24 @@ app.post('/api/tables/:tableId/raffle/spin', (request, response) => {
     table.moduleState.entries.length,
   );
   const [winner] = table.moduleState.entries.splice(winnerIndex, 1);
+  const spinDurationMs = 3600;
+  const totalSlices = table.moduleState.entries.length + 1;
+  const winnerSliceIndex = winnerIndex;
+  const fullTurns = 5 + (table.moduleState.spinCount % 3);
+  const sliceAngle = 360 / Math.max(1, totalSlices);
+  const previousRotation = Number(table.moduleState.lastSpin?.targetRotation ?? 0);
+  const targetRotation = previousRotation + (fullTurns * 360) + (360 - ((winnerSliceIndex + 0.5) * sliceAngle));
 
   table.moduleState.winners.unshift(winner);
+  table.moduleState.lastSpin = {
+    spinIndex: table.moduleState.spinCount,
+    winner,
+    winnerSliceIndex,
+    totalSlices,
+    targetRotation,
+    spinDurationMs,
+    finishedAt: new Date().toISOString(),
+  };
   table.moduleState.events.unshift({
     id: randomUUID(),
     text: `Winner selected: ${winner}`,
@@ -379,11 +395,21 @@ app.post('/api/tables/:tableId/duck/race', (request, response) => {
   const raceSeed = `${table.moduleState.seed}:race:${table.moduleState.raceCount}`;
   const finishOrder = shuffleNamesDeterministic(table.moduleState.entries, raceSeed);
   const winner = finishOrder[0] ?? null;
+  const raceEvents = finishOrder.map((entry, index) => ({
+    entrant: entry,
+    rank: index + 1,
+    lane: table.moduleState.entries.indexOf(entry),
+    durationMs: 5200 + (index * 420) + deterministicIndex(raceSeed, `duration:${entry}`, 700),
+    boostAt: 900 + deterministicIndex(raceSeed, `boost:${entry}`, 1800),
+    spinoutAt: 1800 + deterministicIndex(raceSeed, `spinout:${entry}`, 2100),
+    splashAt: 600 + deterministicIndex(raceSeed, `splash:${entry}`, 3200),
+  }));
 
   table.moduleState.lastWinner = winner;
   table.moduleState.lastRace = {
     raceSeed,
     finishOrder,
+    raceEvents,
     winner,
     finishedAt: new Date().toISOString(),
   };
@@ -864,7 +890,7 @@ async function handleRoundCompletion(table, { forceFinish = false } = {}) {
     timestamp: table.updatedAt,
   });
 
-  if (!forceFinish && activePlayers.length > 1) {
+  if (!forceFinish && (activePlayers.length > 1 || isSinglePlayerBlackjackTest(table, activePlayers))) {
     table.phase = 'round-finished';
     table.preview = createPreviewFromGameState(table.gameState);
     table.log.push({
@@ -916,7 +942,7 @@ function startNextRound(table) {
   syncPlayerChipsFromRound(table);
   const activePlayers = table.players.filter((player) => Number(player.chips) > 0);
 
-  if (activePlayers.length <= 1) {
+  if (activePlayers.length <= 1 && !isSinglePlayerBlackjackTest(table, activePlayers)) {
     return { ok: false, error: 'Tournament already has a winner' };
   }
 
@@ -933,6 +959,10 @@ function startNextRound(table) {
   });
 
   return { ok: true };
+}
+
+function isSinglePlayerBlackjackTest(table, activePlayers) {
+  return table.modeId === 'blackjack' && table.players.length === 1 && activePlayers.length === 1;
 }
 
 function syncPlayerChipsFromRound(table) {

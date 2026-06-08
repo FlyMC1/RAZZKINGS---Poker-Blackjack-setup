@@ -477,14 +477,18 @@ export default function App() {
   }
 
   async function pushRaffleEntries() {
+    let targetTable = table;
+
     if (!table?.id || table.modeId !== 'raffle-wheel') {
       const created = await createModuleSession('raffle-wheel', 'RAZZKINGS Raffle Wheel');
       if (!created) {
         return;
       }
+
+      targetTable = created;
     }
 
-    await fetch(`${apiBase}/api/tables/${table.id}/raffle/entries`, {
+    await fetch(`${apiBase}/api/tables/${targetTable.id}/raffle/entries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entries: raffleEntriesText }),
@@ -492,14 +496,18 @@ export default function App() {
   }
 
   async function pushDuckEntries() {
+    let targetTable = table;
+
     if (!table?.id || table.modeId !== 'duck-races') {
       const created = await createModuleSession('duck-races', 'RAZZKINGS Duck Races');
       if (!created) {
         return;
       }
+
+      targetTable = created;
     }
 
-    await fetch(`${apiBase}/api/tables/${table.id}/duck/entries`, {
+    await fetch(`${apiBase}/api/tables/${targetTable.id}/duck/entries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ entries: duckEntriesText }),
@@ -710,6 +718,7 @@ export default function App() {
   if (isHostView && hostSection === 'raffle-wheel') {
     const raffleEntriesLive = table?.modeId === 'raffle-wheel' ? (table.moduleState?.entries ?? []) : raffleEntries;
     const raffleWinnersLive = table?.modeId === 'raffle-wheel' ? (table.moduleState?.winners ?? []) : raffleWinners;
+    const raffleLastSpin = table?.modeId === 'raffle-wheel' ? table.moduleState?.lastSpin : null;
     const raffleEventsLive = table?.modeId === 'raffle-wheel'
       ? (table.moduleState?.events ?? []).map((event) => event.text)
       : raffleEvents;
@@ -781,14 +790,7 @@ export default function App() {
             </div>
 
             <section className="wheel-panel">
-              <h3>Wheel Order</h3>
-              <div className="entry-chip-grid">
-                {raffleEntries.length
-                  ? raffleEntriesLive.map((entry, index) => (
-                    <span key={`${entry}-${index}`} className="entry-chip">{index + 1}. {entry}</span>
-                  ))
-                  : <p className="muted">Add entries to build the wheel.</p>}
-              </div>
+              <RaffleWheelScene entries={raffleEntriesLive} winners={raffleWinnersLive} lastSpin={raffleLastSpin} />
             </section>
 
             <section className="winner-panel">
@@ -816,6 +818,7 @@ export default function App() {
 
   if (isHostView && hostSection === 'duck-races') {
     const duckEntriesLive = table?.modeId === 'duck-races' ? (table.moduleState?.entries ?? []) : duckEntries;
+    const duckRaceLive = table?.modeId === 'duck-races' ? table.moduleState?.lastRace : null;
     const duckEventsLive = table?.modeId === 'duck-races'
       ? (table.moduleState?.events ?? []).map((event) => event.text)
       : duckEvents;
@@ -890,12 +893,7 @@ export default function App() {
             </div>
 
             <section className="duck-track">
-              {duckEntriesLive.length ? duckEntriesLive.map((entry, index) => (
-                <div key={`${entry}-${index}`} className={`duck-lane ${duckRacing ? 'duck-lane-racing' : ''}`}>
-                  <span>🦆</span>
-                  <strong>{entry}</strong>
-                </div>
-              )) : <p className="muted">Add ducks to stage the race.</p>}
+              <DuckRaceScene entries={duckEntriesLive} race={duckRaceLive} isRacing={duckRacing} />
             </section>
 
             <section className="winner-panel">
@@ -924,6 +922,7 @@ export default function App() {
   if (!isHostView && querySection === 'raffle-wheel') {
     const raffleEntriesLive = table?.moduleState?.entries ?? [];
     const raffleWinnersLive = table?.moduleState?.winners ?? [];
+    const raffleLastSpin = table?.moduleState?.lastSpin ?? null;
     const raffleEventsLive = (table?.moduleState?.events ?? []).map((event) => event.text);
 
     return (
@@ -949,10 +948,7 @@ export default function App() {
               <div className="status-pill">spectator</div>
             </header>
             <section className="wheel-panel">
-              <h3>Current Order</h3>
-              <div className="entry-chip-grid">
-                {raffleEntriesLive.length ? raffleEntriesLive.map((entry, index) => <span key={`${entry}-${index}`} className="entry-chip">{index + 1}. {entry}</span>) : <p className="muted">Waiting for host entries.</p>}
-              </div>
+              <RaffleWheelScene entries={raffleEntriesLive} winners={raffleWinnersLive} lastSpin={raffleLastSpin} />
             </section>
             <section className="winner-panel">
               <h3>Winners</h3>
@@ -980,6 +976,7 @@ export default function App() {
   if (!isHostView && querySection === 'duck-races') {
     const duckEntriesLive = table?.moduleState?.entries ?? [];
     const duckWinnerLive = table?.moduleState?.lastWinner ?? '';
+    const duckRaceLive = table?.moduleState?.lastRace ?? null;
     const duckEventsLive = (table?.moduleState?.events ?? []).map((event) => event.text);
 
     return (
@@ -1005,12 +1002,7 @@ export default function App() {
               <div className="status-pill">spectator</div>
             </header>
             <section className="duck-track">
-              {duckEntriesLive.length ? duckEntriesLive.map((entry, index) => (
-                <div key={`${entry}-${index}`} className="duck-lane">
-                  <span>🦆</span>
-                  <strong>{entry}</strong>
-                </div>
-              )) : <p className="muted">Waiting for host racers.</p>}
+              <DuckRaceScene entries={duckEntriesLive} race={duckRaceLive} isRacing={Boolean(duckRaceLive)} />
             </section>
             <section className="winner-panel">
               <h3>Race Result</h3>
@@ -1291,6 +1283,9 @@ export default function App() {
               </div>
 
               {displaySeats.map((seat, seatOrderIndex) => (
+                (() => {
+                  const publicCards = getPublicSeatCards(mode.id, seat);
+                  return (
                 <article
                   className={`arena-seat ${seat.occupied ? 'occupied' : ''} ${seat.seatIndex === currentTurnSeatIndex ? 'is-active-turn' : ''}`}
                   key={`arena-seat-${seat.seatIndex}`}
@@ -1300,9 +1295,11 @@ export default function App() {
                   <span>{seat.name}</span>
                   <SeatAvatar avatarUrl={seat.avatarUrl} label={seat.name} />
                   <div className="card-stack">
-                    {seat.hand.length ? seat.hand.map((card, index) => <CardView key={`seat-${seat.seatIndex}-${card.id}`} card={card} index={index} />) : <SeatPlaceholder />}
+                    {publicCards.length ? publicCards.map((card, index) => <CardView key={`seat-${seat.seatIndex}-${card.id}`} card={card} index={index} />) : <SeatPlaceholder text={seat.occupied ? 'Cards hidden' : 'Open seat'} />}
                   </div>
                 </article>
+                  );
+                })()
               ))}
             </div>
           </div>
@@ -1436,14 +1433,167 @@ function CardView({ card, index }) {
 
 function SeatAvatar({ avatarUrl, label }) {
   if (!avatarUrl) {
-    return <div className="seat-placeholder tiny">No image</div>;
+    return <PlayerSilhouette label={label} />;
   }
 
   return <img className="seat-avatar" src={avatarUrl} alt={label} />;
 }
 
+function PlayerSilhouette({ label }) {
+  return (
+    <svg className="player-silhouette" viewBox="0 0 72 72" role="img" aria-label={`${label} silhouette`}>
+      <defs>
+        <linearGradient id="silhouette-fill" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#29483f" />
+          <stop offset="100%" stopColor="#10251f" />
+        </linearGradient>
+      </defs>
+      <circle cx="36" cy="22" r="13" fill="url(#silhouette-fill)" />
+      <path d="M12 64c2-16 12-26 24-26s22 10 24 26" fill="url(#silhouette-fill)" />
+      <path d="M20 64c3-10 9-15 16-15s13 5 16 15" fill="rgba(232,191,106,0.14)" />
+    </svg>
+  );
+}
+
+function RaffleWheelScene({ entries, winners, lastSpin }) {
+  const wheelEntries = getWheelDisplayEntries(entries, lastSpin);
+  const sliceAngle = 360 / wheelEntries.length;
+  const rotation = lastSpin?.targetRotation ?? 0;
+  const winner = lastSpin?.winner ?? winners[0] ?? '';
+
+  return (
+    <div className="raffle-scene">
+      <ShowPresenter active={Boolean(lastSpin)} />
+      <div className="wheel-wrap">
+        <div className="wheel-pointer" />
+        <svg
+          className="raffle-wheel-svg"
+          viewBox="0 0 240 240"
+          style={{ '--wheel-rotation': `${rotation}deg`, '--wheel-duration': `${lastSpin?.spinDurationMs ?? 1200}ms` }}
+        >
+          <g transform="translate(120 120)">
+            {wheelEntries.map((entry, index) => (
+              <g key={`${entry}-${index}`}>
+                <path d={describeWheelSlice(0, 0, 106, index * sliceAngle, (index + 1) * sliceAngle)} fill={wheelColor(index)} stroke="rgba(4,12,12,0.7)" strokeWidth="1" />
+                <text
+                  className="wheel-label"
+                  transform={`rotate(${index * sliceAngle + sliceAngle / 2}) translate(62 0) rotate(90)`}
+                  textAnchor="middle"
+                >
+                  {truncateLabel(entry, wheelEntries.length > 18 ? 7 : 12)}
+                </text>
+              </g>
+            ))}
+            <circle r="28" fill="#10241f" stroke="rgba(232,191,106,0.82)" strokeWidth="4" />
+            <text className="wheel-center-text" textAnchor="middle" y="5">RAZZ</text>
+          </g>
+        </svg>
+      </div>
+      <div className="wheel-result-card">
+        <span>{winner ? 'Winning slice' : 'Ready to spin'}</span>
+        <strong>{winner || `${wheelEntries.length} entries loaded`}</strong>
+      </div>
+    </div>
+  );
+}
+
+function getWheelDisplayEntries(entries, lastSpin) {
+  if (!entries.length && !lastSpin?.winner) {
+    return ['Waiting'];
+  }
+
+  if (!lastSpin?.winner || entries.includes(lastSpin.winner)) {
+    return entries.length ? entries : [lastSpin.winner];
+  }
+
+  const next = [...entries];
+  const insertIndex = Math.max(0, Math.min(Number(lastSpin.winnerSliceIndex) || 0, next.length));
+  next.splice(insertIndex, 0, lastSpin.winner);
+  return next;
+}
+
+function ShowPresenter({ active }) {
+  return (
+    <svg className={`show-presenter ${active ? 'is-spinning' : ''}`} viewBox="0 0 120 180" role="img" aria-label="show presenter">
+      <path className="presenter-shadow" d="M20 170c18 8 62 8 80 0" />
+      <circle cx="62" cy="34" r="18" className="presenter-skin" />
+      <path d="M43 33c4-18 34-21 39-1-12-6-25-5-39 1z" className="presenter-hair" />
+      <path d="M48 58h29l10 62H38z" className="presenter-jacket" />
+      <path d="M52 60h20l-6 42h-8z" className="presenter-shirt" />
+      <path className="presenter-arm presenter-arm-left" d="M45 66c-15 15-21 29-25 47" />
+      <path className="presenter-arm presenter-arm-right" d="M78 68c18 8 28 18 34 34" />
+      <path d="M48 120l-6 42" className="presenter-leg" />
+      <path d="M76 120l8 42" className="presenter-leg" />
+    </svg>
+  );
+}
+
+function DuckRaceScene({ entries, race, isRacing }) {
+  const racers = entries.length ? entries : ['Waiting'];
+  const finishOrder = race?.finishOrder ?? racers;
+  const raceEvents = race?.raceEvents ?? racers.map((entry, index) => ({ entrant: entry, rank: index + 1, durationMs: 5600 + index * 400 }));
+
+  return (
+    <div className="duck-race-scene">
+      <svg className="duck-track-svg" viewBox="0 0 900 460" role="img" aria-label="figure eight duck race track">
+        <defs>
+          <path id="figure-eight-path" d="M120 230C120 70 380 70 450 230C520 390 780 390 780 230C780 70 520 70 450 230C380 390 120 390 120 230Z" />
+          <filter id="water-wobble">
+            <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" />
+            <feDisplacementMap in="SourceGraphic" scale="4" />
+          </filter>
+        </defs>
+        <rect width="900" height="460" rx="24" fill="#09242b" />
+        <use href="#figure-eight-path" className="track-water-glow" />
+        <use href="#figure-eight-path" className="track-water" />
+        <use href="#figure-eight-path" className="track-foam" />
+        {Array.from({ length: 18 }, (_, index) => (
+          <circle key={`splash-${index}`} className="water-splash" cx={90 + ((index * 47) % 720)} cy={96 + ((index * 83) % 270)} r={3 + (index % 4)} style={{ '--splash-delay': `${index * 110}ms` }} />
+        ))}
+        {racers.slice(0, 16).map((entry, index) => {
+          const event = raceEvents.find((item) => item.entrant === entry) ?? raceEvents[index] ?? {};
+          const rank = finishOrder.indexOf(entry) + 1 || index + 1;
+          return (
+            <g key={`${entry}-${index}`} className={`duck-racer ${isRacing || race ? 'is-racing' : ''}`} style={{ '--race-duration': `${event.durationMs ?? 5600}ms`, '--race-delay': `${index * 130}ms` }}>
+              <animateMotion dur={`${Math.max(2400, event.durationMs ?? 5600)}ms`} begin={`${index * 0.13}s`} repeatCount={race ? '1' : 'indefinite'} fill="freeze" rotate="auto">
+                <mpath href="#figure-eight-path" />
+              </animateMotion>
+              <DuckSprite index={index} rank={rank} label={entry} />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="race-finish-list">
+        {finishOrder.slice(0, 5).map((entry, index) => <span key={`${entry}-${index}`}>#{index + 1} {entry}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function DuckSprite({ index, rank, label }) {
+  return (
+    <g className="duck-sprite" transform="translate(-24 -16)">
+      <ellipse cx="24" cy="30" rx="22" ry="13" fill={duckColor(index)} />
+      <circle cx="41" cy="20" r="11" fill={duckColor(index)} />
+      <path d="M50 20l15 5-15 6z" fill="#f0a33a" />
+      <circle cx="45" cy="17" r="2" fill="#10241f" />
+      <path d="M5 27c9-14 23-13 31-2-11-2-20 0-31 2z" fill="rgba(255,255,255,0.28)" />
+      <text x="24" y="56" textAnchor="middle" className="duck-rank">#{rank}</text>
+      <title>{label}</title>
+    </g>
+  );
+}
+
 function SeatPlaceholder({ text = 'Awaiting deal' }) {
   return <div className="seat-placeholder">{text}</div>;
+}
+
+function getPublicSeatCards(modeId, seat) {
+  if (modeId === 'blackjack') {
+    return seat.hand ?? [];
+  }
+
+  return [];
 }
 
 function ChatEntry({ entry }) {
@@ -1495,6 +1645,43 @@ function getApiBaseUrl() {
   }
 
   return 'http://localhost:3001';
+}
+
+function describeWheelSlice(centerX, centerY, radius, startAngle, endAngle) {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle);
+  const end = polarToCartesian(centerX, centerY, radius, startAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
+
+  return [
+    `M ${centerX} ${centerY}`,
+    `L ${start.x} ${start.y}`,
+    `A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+    'Z',
+  ].join(' ');
+}
+
+function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
+
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function wheelColor(index) {
+  const colors = ['#f2c66f', '#70d6b3', '#e56f6f', '#6fb1e8', '#d48af0', '#f08f57', '#9ce37d', '#f3e37c'];
+  return colors[index % colors.length];
+}
+
+function duckColor(index) {
+  const colors = ['#ffd94a', '#f6a94a', '#87d37c', '#6eb8f5', '#f27fb1', '#d8ec5a', '#b992ff', '#f4785d'];
+  return colors[index % colors.length];
+}
+
+function truncateLabel(label, maxLength) {
+  const text = String(label ?? 'Entry');
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
 function normalizeSection(section) {

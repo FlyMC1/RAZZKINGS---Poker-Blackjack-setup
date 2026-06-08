@@ -210,6 +210,132 @@ button {
   padding: 10px 12px;
 }
 
+.raffle-scene {
+  min-height: 430px;
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) minmax(280px, 1fr) minmax(150px, 210px);
+  align-items: center;
+  gap: 14px;
+}
+
+.wheel-wrap {
+  position: relative;
+  width: min(430px, 100%);
+  aspect-ratio: 1;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+}
+
+.raffle-wheel-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 20px 28px rgba(0, 0, 0, 0.38));
+  transform: rotate(var(--wheel-rotation, 0deg));
+  transform-origin: 50% 50%;
+  transition: transform var(--wheel-duration, 1200ms) cubic-bezier(0.12, 0.74, 0.08, 1);
+}
+
+.wheel-pointer {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 16px solid transparent;
+  border-right: 16px solid transparent;
+  border-top: 32px solid #ffe2a7;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+}
+
+.wheel-label {
+  fill: #09211e;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1px;
+}
+
+.wheel-center-text {
+  fill: #ffe2a7;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.wheel-result-card {
+  align-self: center;
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(232, 191, 106, 0.12);
+  border: 1px solid rgba(232, 191, 106, 0.35);
+  display: grid;
+  gap: 6px;
+}
+
+.wheel-result-card span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wheel-result-card strong {
+  color: #ffe2a7;
+  font-size: 1.25rem;
+}
+
+.show-presenter {
+  width: 130px;
+  justify-self: center;
+  transform-origin: 50% 100%;
+  animation: presenter-walk-in 900ms ease both;
+}
+
+.show-presenter.is-spinning .presenter-arm-right {
+  animation: presenter-spin-gesture 740ms ease-in-out 2;
+}
+
+.presenter-shadow {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 8;
+  fill: none;
+}
+
+.presenter-skin {
+  fill: #d8a46e;
+}
+
+.presenter-hair {
+  fill: #1b1515;
+}
+
+.presenter-jacket {
+  fill: #23483f;
+  stroke: rgba(232, 191, 106, 0.34);
+  stroke-width: 2;
+}
+
+.presenter-shirt {
+  fill: #ffe2a7;
+}
+
+.presenter-arm,
+.presenter-leg {
+  fill: none;
+  stroke: #d8a46e;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+
+.presenter-leg {
+  stroke: #152823;
+}
+
 .entry-chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -227,6 +353,79 @@ button {
 .duck-track {
   display: grid;
   gap: 8px;
+}
+
+.duck-race-scene {
+  display: grid;
+  gap: 10px;
+}
+
+.duck-track-svg {
+  width: 100%;
+  min-height: 360px;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.03);
+}
+
+.track-water-glow {
+  fill: none;
+  stroke: rgba(124, 230, 231, 0.22);
+  stroke-width: 118;
+}
+
+.track-water {
+  fill: none;
+  stroke: #16849a;
+  stroke-width: 76;
+  stroke-linecap: round;
+  filter: url(#water-wobble);
+}
+
+.track-foam {
+  fill: none;
+  stroke: rgba(229, 252, 255, 0.82);
+  stroke-width: 5;
+  stroke-dasharray: 12 16;
+  animation: water-dash 2.6s linear infinite;
+}
+
+.water-splash {
+  fill: rgba(223, 250, 255, 0.75);
+  animation: splash-pop 900ms ease-in-out infinite;
+  animation-delay: var(--splash-delay, 0ms);
+}
+
+.duck-racer {
+  animation: duck-chaos var(--race-duration, 5600ms) ease-in-out var(--race-delay, 0ms) both;
+}
+
+.duck-sprite {
+  filter: drop-shadow(0 7px 5px rgba(0, 0, 0, 0.28));
+}
+
+.duck-rank {
+  fill: #f6fbf6;
+  font-size: 10px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 2px;
+}
+
+.race-finish-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.race-finish-list span {
+  border-radius: 999px;
+  background: rgba(124, 230, 167, 0.12);
+  border: 1px solid rgba(124, 230, 167, 0.24);
+  padding: 6px 10px;
+  font-size: 0.78rem;
 }
 
 .duck-lane {
@@ -423,6 +622,15 @@ button:disabled {
   border-radius: 12px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.player-silhouette {
+  width: 68px;
+  height: 68px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px;
 }
 
 .table-stage {
@@ -829,6 +1037,67 @@ button:disabled {
   }
 }
 
+@keyframes presenter-walk-in {
+  from {
+    opacity: 0;
+    transform: translateX(-24px) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes presenter-spin-gesture {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  45% {
+    transform: rotate(-12deg) translateX(6px);
+  }
+}
+
+@keyframes water-dash {
+  to {
+    stroke-dashoffset: -56;
+  }
+}
+
+@keyframes splash-pop {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.6);
+  }
+  45% {
+    opacity: 0.95;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes duck-chaos {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+  16% {
+    transform: translateY(-9px) rotate(-7deg) scale(1.04);
+  }
+  32% {
+    transform: translateY(5px) rotate(18deg) scale(0.98);
+  }
+  50% {
+    transform: translateY(-14px) rotate(-22deg) scale(1.08);
+  }
+  67% {
+    transform: translateY(6px) rotate(26deg) scale(0.96);
+  }
+  84% {
+    transform: translateY(-7px) rotate(-10deg) scale(1.03);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
 @keyframes duck-lane-pulse {
   0% {
     transform: translateX(0);
@@ -908,6 +1177,14 @@ button:disabled {
 
   .home-panel {
     padding: 26px 18px;
+  }
+
+  .raffle-scene {
+    grid-template-columns: 1fr;
+  }
+
+  .show-presenter {
+    width: 96px;
   }
 }
 
