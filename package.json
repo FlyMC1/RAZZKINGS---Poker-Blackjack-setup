@@ -3,7 +3,7 @@
   "description": "Host-led play-money poker, blackjack, and classic poker table app.",
   "author": "FlyMC1",
   "private": true,
-  "version": "0.3.6",
+  "version": "0.3.7",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {

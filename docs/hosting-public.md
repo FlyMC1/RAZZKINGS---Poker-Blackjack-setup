@@ -34,12 +34,14 @@ Tradeoff:
 Recommended one-click setup:
 
 1. Double-click `setup-public-host-windows.cmd`.
-2. Follow prompts.
-3. Setup will automatically:
+2. Confirm the setup window prints the RAZZKINGS setup banner and project folder.
+3. Setup runs in auto mode and will:
    - check/install Node.js LTS,
    - check/install cloudflared,
    - run `npm install`,
    - create Desktop shortcut **RAZZKINGS Public Host**.
+
+If the window opens but does not show setup text, extract the full project zip first and run `setup-public-host-windows.cmd` from the extracted folder. Do not run it from inside the Windows compressed-folder preview.
 
 Terminal alternative:
 

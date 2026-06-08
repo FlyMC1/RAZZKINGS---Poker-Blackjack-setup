@@ -1,3 +1,7 @@
+param(
+    [switch]$Auto
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -29,6 +33,12 @@ function Confirm-Continue {
 
 function Confirm-Required {
     param([string]$Question)
+
+    if ($Auto) {
+        Write-Host "[setup] $Question Yes" -ForegroundColor Cyan
+        return $true
+    }
+
     while ($true) {
         $answer = Read-Host "$Question (Y/N)"
         if ($answer -match '^(y|yes)$') {
@@ -115,7 +125,12 @@ Write-Host '====================================================='
 Write-Host 'This setup will install prerequisites, configure project dependencies,'
 Write-Host 'and create a Desktop shortcut for one-click public hosting.'
 Write-Host ''
-Write-Host '[setup] Keep this window open and respond to prompts as they appear.' -ForegroundColor Yellow
+if ($Auto) {
+    Write-Host '[setup] Auto mode is enabled. Setup will install/check required pieces now.' -ForegroundColor Yellow
+}
+else {
+    Write-Host '[setup] Keep this window open and respond to prompts as they appear.' -ForegroundColor Yellow
+}
 if (-not (Test-IsAdmin)) {
     Write-Host '[setup] Tip: if package installs fail, re-run this setup as Administrator.' -ForegroundColor Yellow
 }

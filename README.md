@@ -51,12 +51,15 @@ Step-by-step setup guide:
 ### Windows Full Auto Setup
 
 1. Double-click `setup-public-host-windows.cmd`.
-2. Follow prompts for each step:
+2. A setup window should immediately show the RAZZKINGS setup banner and project folder.
+3. Setup will automatically:
 	- install/check Node.js LTS,
 	- install/check cloudflared,
 	- run `npm install`,
 	- create Desktop shortcut.
-3. Launch with Desktop shortcut **RAZZKINGS Public Host**.
+4. Launch with Desktop shortcut **RAZZKINGS Public Host**.
+
+If the setup window opens but does not print the setup banner, extract the full project zip first and run `setup-public-host-windows.cmd` from the extracted folder, not from inside the compressed zip preview.
 
 The launcher will start the app with a Cloudflare public URL so outside-network users can join.
 
