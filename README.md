@@ -48,6 +48,12 @@ Step-by-step setup guide:
 4. Create table.
 5. Share generated links/QR with players.
 
+The top-right host badge shows network availability:
+
+- Green **Live public**: outside-network links are using a public HTTPS tunnel.
+- Orange **LAN only**: the app is running locally/on your network only.
+- Red **Host error**: the app cannot reach the local host server.
+
 ### Windows Full Auto Setup
 
 1. Double-click `setup-public-host-windows.cmd`.
@@ -62,6 +68,7 @@ Step-by-step setup guide:
 If the setup window opens but does not print the setup banner, extract the full project zip first and run `setup-public-host-windows.cmd` from the extracted folder, not from inside the compressed zip preview.
 
 The launcher will start the app with a Cloudflare public URL so outside-network users can join.
+The launcher window now prints the project folder and dependency checks immediately. If it appears idle, use the latest `RAZZKINGS-public-host-project-<version>.zip`, extract it fully, and run the `.cmd` file from the extracted folder.
 
 ### Manual Session Flow
 

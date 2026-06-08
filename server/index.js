@@ -41,6 +41,17 @@ app.get('/health', (_, response) => {
   });
 });
 
+app.get('/api/host-status', (request, response) => {
+  const baseUrl = getHostBaseUrl(request);
+
+  response.json({
+    ok: true,
+    baseUrl,
+    scope: getHostingScope(baseUrl),
+    publicBaseUrl: sanitizeBaseUrl(process.env.PUBLIC_BASE_URL || ''),
+  });
+});
+
 app.get('/api/tables/:tableId', (request, response) => {
   const table = tables.get(request.params.tableId);
 
@@ -844,6 +855,16 @@ function getHostBaseUrl(request, publicBaseUrl = '') {
     .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
 
   return `http://${lanAddress ?? 'localhost'}:3001`;
+}
+
+function getHostingScope(baseUrl) {
+  try {
+    const parsed = new URL(baseUrl);
+    const hostName = parsed.hostname.toLowerCase();
+    return parsed.protocol === 'https:' && !isLocalHostName(hostName) ? 'public' : 'lan';
+  } catch {
+    return 'error';
+  }
 }
 
 function sanitizeBaseUrl(value) {

@@ -46,6 +46,68 @@ button {
 .app-shell {
   min-height: 100vh;
   padding: 14px;
+  position: relative;
+}
+
+.host-availability {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(320px, calc(100vw - 24px));
+  min-height: 34px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(5, 12, 14, 0.88);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  backdrop-filter: blur(12px);
+}
+
+.host-availability-light {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted);
+  box-shadow: 0 0 14px currentColor;
+}
+
+.host-availability-public {
+  border-color: rgba(124, 230, 167, 0.5);
+  color: #b9ffd0;
+}
+
+.host-availability-public .host-availability-light {
+  background: #27e36f;
+}
+
+.host-availability-lan,
+.host-availability-checking {
+  border-color: rgba(232, 191, 106, 0.52);
+  color: #ffe1a3;
+}
+
+.host-availability-lan .host-availability-light,
+.host-availability-checking .host-availability-light {
+  background: #f0a12a;
+}
+
+.host-availability-error {
+  border-color: rgba(255, 123, 123, 0.58);
+  color: #ffc0c0;
+}
+
+.host-availability-error .host-availability-light {
+  background: #ff4b4b;
 }
 
 .home-shell {

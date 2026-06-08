@@ -58,6 +58,11 @@ export default function App() {
   const [showSpectatorQr, setShowSpectatorQr] = useState(false);
   const [betAmount, setBetAmount] = useState(10);
   const [showRules, setShowRules] = useState(false);
+  const [hostAvailability, setHostAvailability] = useState({
+    level: 'checking',
+    label: 'Checking host',
+    detail: 'Checking network availability...',
+  });
 
   const queryTableId = urlParams.get('table');
   const queryReplayId = urlParams.get('replay');
@@ -108,6 +113,8 @@ export default function App() {
 
   const waitingLabel = queryRole === 'spectator' ? 'Watching table. Waiting for host to start.' : 'You are seated. Waiting for host to start.';
   const showJoinPanel = !isHostView && !isJoined;
+  const effectiveHostBaseUrl = table?.baseUrl || config.publicBaseUrl || hostAvailability.baseUrl || apiBase;
+  const hostBadgeStatus = getHostBadgeStatus(hostAvailability, effectiveHostBaseUrl);
   const ruleSet = modeRules[mode.id] ?? [];
   const chipStandings = useMemo(
     () => [...(table?.players ?? [])].sort((left, right) => Number(right.chips ?? 0) - Number(left.chips ?? 0)),
@@ -219,6 +226,53 @@ export default function App() {
 
     setHostSection(querySection);
   }, [isHostView, querySection]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function refreshHostStatus() {
+      try {
+        const response = await fetch(`${apiBase}/api/host-status`, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error(`Host status returned ${response.status}`);
+        }
+
+        const status = await response.json();
+
+        if (!active) {
+          return;
+        }
+
+        setHostAvailability({
+          level: status.scope === 'public' ? 'public' : 'lan',
+          label: status.scope === 'public' ? 'Live public' : 'LAN only',
+          detail: status.scope === 'public'
+            ? `Outside-network links are using ${status.baseUrl}`
+            : `Available on this network at ${status.baseUrl}`,
+          baseUrl: status.baseUrl,
+        });
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setHostAvailability({
+          level: 'error',
+          label: 'Host error',
+          detail: error instanceof Error ? error.message : 'Unable to reach local host server.',
+        });
+      }
+    }
+
+    void refreshHostStatus();
+    const intervalId = window.setInterval(refreshHostStatus, 8000);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     setRaffleEntries(extractEntries(raffleEntriesText));
@@ -654,6 +708,7 @@ export default function App() {
     const replayState = replayData.finalGameState ?? replayData.gameState;
     return (
       <div className="app-shell replay-screen">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <section className="host-sidebar">
           <div className="hero-top">
             <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
@@ -689,6 +744,7 @@ export default function App() {
   if (isHostView && !hostSection) {
     return (
       <div className="app-shell home-shell">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <main className="home-layout">
           <section className="home-panel">
             <img className="home-logo" src={logoUrl} alt="RAZZKINGS logo" />
@@ -727,6 +783,7 @@ export default function App() {
       : `${apiBase}/?section=raffle-wheel&role=spectator`;
     return (
       <div className="app-shell">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <main className="module-layout">
           <section className="module-sidebar">
             <div className="hero-top">
@@ -828,6 +885,7 @@ export default function App() {
       : `${apiBase}/?section=duck-races&role=spectator`;
     return (
       <div className="app-shell">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <main className="module-layout">
           <section className="module-sidebar">
             <div className="hero-top">
@@ -927,6 +985,7 @@ export default function App() {
 
     return (
       <div className="app-shell">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <main className="module-layout">
           {!isJoined ? (
             <section className="module-sidebar">
@@ -981,6 +1040,7 @@ export default function App() {
 
     return (
       <div className="app-shell">
+        <HostAvailabilityBadge status={hostBadgeStatus} />
         <main className="module-layout">
           {!isJoined ? (
             <section className="module-sidebar">
@@ -1029,6 +1089,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <HostAvailabilityBadge status={hostBadgeStatus} />
       <main className={`app-layout ${isHostView ? 'host-mode' : 'join-mode'}`}>
         {isHostView ? (
           <section className="host-sidebar">
@@ -1439,6 +1500,15 @@ function SeatAvatar({ avatarUrl, label }) {
   return <img className="seat-avatar" src={avatarUrl} alt={label} />;
 }
 
+function HostAvailabilityBadge({ status }) {
+  return (
+    <div className={`host-availability host-availability-${status.level}`} title={status.detail} aria-label={status.detail}>
+      <span className="host-availability-light" />
+      <span>{status.label}</span>
+    </div>
+  );
+}
+
 function PlayerSilhouette({ label }) {
   return (
     <svg className="player-silhouette" viewBox="0 0 72 72" role="img" aria-label={`${label} silhouette`}>
@@ -1510,6 +1580,40 @@ function getWheelDisplayEntries(entries, lastSpin) {
   const insertIndex = Math.max(0, Math.min(Number(lastSpin.winnerSliceIndex) || 0, next.length));
   next.splice(insertIndex, 0, lastSpin.winner);
   return next;
+}
+
+function getHostBadgeStatus(hostAvailability, effectiveBaseUrl) {
+  if (hostAvailability.level === 'error') {
+    return hostAvailability;
+  }
+
+  if (isPublicUrl(effectiveBaseUrl)) {
+    return {
+      level: 'public',
+      label: 'Live public',
+      detail: `Outside-network links are using ${effectiveBaseUrl}`,
+    };
+  }
+
+  if (hostAvailability.level === 'checking') {
+    return hostAvailability;
+  }
+
+  return {
+    level: 'lan',
+    label: 'LAN only',
+    detail: `Available on this network at ${effectiveBaseUrl}`,
+  };
+}
+
+function isPublicUrl(value) {
+  try {
+    const parsed = new URL(String(value ?? ''));
+    const hostName = parsed.hostname.toLowerCase();
+    return parsed.protocol === 'https:' && hostName !== 'localhost' && hostName !== '127.0.0.1' && hostName !== '::1';
+  } catch {
+    return false;
+  }
 }
 
 function ShowPresenter({ active }) {

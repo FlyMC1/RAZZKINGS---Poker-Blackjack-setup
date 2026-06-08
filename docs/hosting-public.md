@@ -72,6 +72,14 @@ Terminal alternative:
    - start RAZZKINGS with `PUBLIC_BASE_URL` already set.
 5. Create a table and share the generated links/QR.
 
+The app badge in the top-right corner confirms hosting state:
+
+- Green **Live public** means the app is using the Cloudflare public URL and outside-network users should be able to join.
+- Orange **LAN only** means the app is available only on the local network.
+- Red **Host error** means the app cannot reach the local host server.
+
+If `start-public-host.cmd` opens but appears to do nothing, update to the latest `RAZZKINGS-public-host-project-<version>.zip`, extract it fully, and run the `.cmd` file from the extracted folder. The launcher should print the project folder and each dependency check immediately.
+
 ### Option B: Manual (Legacy)
 
 1. Open terminal in repo root.
