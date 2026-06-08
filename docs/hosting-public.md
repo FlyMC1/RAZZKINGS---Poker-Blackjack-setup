@@ -111,3 +111,8 @@ Terminal alternative:
 - Do not share host control screen publicly.
 - Keep session short-lived; stop tunnel when done.
 - Quick Tunnel is for lightweight community use. For long-term production, use a named tunnel + managed domain.
+
+## Replay Retention Setting
+
+- Replay files auto-expire based on `REPLAY_RETENTION_DAYS`.
+- Default retention is `30` days if unset.

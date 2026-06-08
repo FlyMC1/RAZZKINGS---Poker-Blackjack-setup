@@ -20,6 +20,18 @@ Play-money casino table host for Texas Hold'em, blackjack, and classic poker.
 - `npm run host:public:oneclick`: One-click public host launcher (auto tunnel URL detection + app launch).
 - `npm run setup:windows`: Guided Windows setup (install deps + create Desktop shortcut).
 
+## Tournament Hand Flow
+
+- Card Games now support explicit hand progression.
+- After a hand finishes, host uses **Deal next hand** to continue.
+- Tournament runs until one player has remaining chips, or host manually ends and saves replay.
+
+## Replay Retention
+
+- Replays auto-expire after a retention period.
+- Configure with environment variable: `REPLAY_RETENTION_DAYS`
+- Default: `30` days.
+
 ## Host Outside Your Network (Free)
 
 Use Cloudflare Tunnel (free).

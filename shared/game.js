@@ -23,6 +23,20 @@ export const gameModes = [
     deckRange: [1, 3],
     actionSet: ['Fold', 'Hold', 'Draw'],
   },
+  {
+    id: 'raffle-wheel',
+    label: 'Raffle Wheel',
+    seats: 100,
+    deckRange: [1, 1],
+    actionSet: [],
+  },
+  {
+    id: 'duck-races',
+    label: 'Duck Races',
+    seats: 100,
+    deckRange: [1, 1],
+    actionSet: [],
+  },
 ];
 
 export function createDeck(deckCount = 1) {

@@ -17,6 +17,7 @@ const initialConfig = {
 };
 
 const emojiBar = ['⭐', '🔥', '🎯', '🎲', '🃏', '💎'];
+const cardModeIds = new Set(['blackjack', 'texas-holdem', 'classic-poker']);
 const modeRules = {
   blackjack: [
     'Try to finish closer to 21 than the dealer without going over.',
@@ -60,11 +61,23 @@ export default function App() {
 
   const queryTableId = urlParams.get('table');
   const queryReplayId = urlParams.get('replay');
+  const querySection = normalizeSection(urlParams.get('section'));
   const queryRole = normalizeRole(urlParams.get('role'));
   const queryToken = urlParams.get('token') ?? '';
 
   const isLinkSession = Boolean(queryTableId && queryRole && queryToken);
   const isHostView = !isLinkSession && !queryReplayId;
+
+  const [hostSection, setHostSection] = useState(querySection);
+  const [raffleEntriesText, setRaffleEntriesText] = useState('');
+  const [raffleEntries, setRaffleEntries] = useState([]);
+  const [raffleEvents, setRaffleEvents] = useState([]);
+  const [raffleWinners, setRaffleWinners] = useState([]);
+  const [duckEntriesText, setDuckEntriesText] = useState('');
+  const [duckEntries, setDuckEntries] = useState([]);
+  const [duckEvents, setDuckEvents] = useState([]);
+  const [duckWinner, setDuckWinner] = useState('');
+  const [duckRacing, setDuckRacing] = useState(false);
 
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
@@ -84,11 +97,12 @@ export default function App() {
     ? stageState.seats[stageState.currentSeatIndex].seatIndex
     : -1;
 
+  const activeSection = hostSection || 'card-games';
   const playerJoinUrl = table
-    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&role=player&token=${table.playerJoinToken}`
+    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&section=${activeSection}&role=player&token=${table.playerJoinToken}`
     : 'Create a table to generate links';
   const spectatorJoinUrl = table
-    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&role=spectator&token=${table.spectatorJoinToken}`
+    ? `${table.baseUrl ?? apiBase}/?table=${table.id}&section=${activeSection}&role=spectator&token=${table.spectatorJoinToken}`
     : 'Create a table to generate links';
   const replayUrl = table?.replayId ? `${table.baseUrl ?? apiBase}/?replay=${table.replayId}` : null;
 
@@ -142,13 +156,13 @@ export default function App() {
         seatIndex: index,
         name: player.name ?? `Seat ${index + 1}`,
         avatarUrl: player.avatarUrl ?? '',
-        hand: livePreview.playerHands?.[index] ?? [],
+          hand: [],
         occupied: true,
       };
     }
 
     return arranged;
-  }, [livePreview.playerHands, seatCount, stageState?.seats, table?.players]);
+  }, [seatCount, stageState?.seats, table?.players]);
 
   useEffect(() => {
     if (storedProfile.roomName !== roomName || storedProfile.avatarUrl !== avatarUrl) {
@@ -197,6 +211,22 @@ export default function App() {
       active = false;
     };
   }, [queryTableId]);
+
+  useEffect(() => {
+    if (!isHostView) {
+      return;
+    }
+
+    setHostSection(querySection);
+  }, [isHostView, querySection]);
+
+  useEffect(() => {
+    setRaffleEntries(extractEntries(raffleEntriesText));
+  }, [raffleEntriesText]);
+
+  useEffect(() => {
+    setDuckEntries(extractEntries(duckEntriesText));
+  }, [duckEntriesText]);
 
   useEffect(() => {
     if (!table?.id || !isJoined) {
@@ -410,6 +440,114 @@ export default function App() {
     });
   }
 
+  async function createModuleSession(modeId, tableName) {
+    const response = await fetch(`${apiBase}/api/tables`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modeId,
+        tableName,
+        maxPlayers: 1,
+        deckCount: 1,
+        startingChips: 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const nextTable = await response.json();
+    setTable(nextTable);
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    socket.emit('table:join', {
+      tableId: nextTable.id,
+      name: roomName,
+      role: 'spectator',
+      avatarUrl,
+      token: nextTable.spectatorJoinToken,
+    });
+
+    setIsJoined(true);
+    return nextTable;
+  }
+
+  async function pushRaffleEntries() {
+    if (!table?.id || table.modeId !== 'raffle-wheel') {
+      const created = await createModuleSession('raffle-wheel', 'RAZZKINGS Raffle Wheel');
+      if (!created) {
+        return;
+      }
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/raffle/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: raffleEntriesText }),
+    });
+  }
+
+  async function pushDuckEntries() {
+    if (!table?.id || table.modeId !== 'duck-races') {
+      const created = await createModuleSession('duck-races', 'RAZZKINGS Duck Races');
+      if (!created) {
+        return;
+      }
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/duck/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries: duckEntriesText }),
+    });
+  }
+
+  async function hostJumbleRaffle() {
+    if (!table?.id || table.modeId !== 'raffle-wheel') {
+      return;
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/raffle/jumble`, { method: 'POST' });
+  }
+
+  async function hostSpinRaffle() {
+    if (!table?.id || table.modeId !== 'raffle-wheel') {
+      return;
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/raffle/spin`, { method: 'POST' });
+  }
+
+  async function hostJumbleDucks() {
+    if (!table?.id || table.modeId !== 'duck-races') {
+      return;
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/duck/jumble`, { method: 'POST' });
+  }
+
+  async function hostRaceDucks() {
+    if (!table?.id || table.modeId !== 'duck-races' || duckRacing) {
+      return;
+    }
+
+    setDuckRacing(true);
+    await fetch(`${apiBase}/api/tables/${table.id}/duck/race`, { method: 'POST' });
+    window.setTimeout(() => setDuckRacing(false), 900);
+  }
+
+  async function finishModuleSession() {
+    if (!table?.id || (table.modeId !== 'raffle-wheel' && table.modeId !== 'duck-races')) {
+      return;
+    }
+
+    await fetch(`${apiBase}/api/tables/${table.id}/module/finish`, { method: 'POST' });
+  }
+
   function sendChat(emoji = '⭐') {
     if (!table?.id || !isJoined) {
       return;
@@ -426,6 +564,82 @@ export default function App() {
     if (chatText.trim()) {
       setChatText('');
     }
+  }
+
+  function navigateSection(sectionId) {
+    if (!isHostView) {
+      return;
+    }
+
+    const nextSection = normalizeSection(sectionId);
+    setHostSection(nextSection);
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (nextSection) {
+        params.set('section', nextSection);
+      } else {
+        params.delete('section');
+      }
+
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`;
+      window.history.replaceState({}, '', nextUrl);
+    }
+  }
+
+  function jumbleRaffleEntries() {
+    if (!raffleEntries.length) {
+      return;
+    }
+
+    const nextOrder = shuffleEntries(raffleEntries);
+    setRaffleEntries(nextOrder);
+    setRaffleEntriesText(nextOrder.join('\n'));
+    setRaffleEvents((current) => [`Jumbled ${nextOrder.length} entries at ${new Date().toLocaleTimeString()}`, ...current].slice(0, 20));
+  }
+
+  function spinRaffleWheel() {
+    if (!raffleEntries.length) {
+      return;
+    }
+
+    const winnerIndex = Math.floor(Math.random() * raffleEntries.length);
+    const winner = raffleEntries[winnerIndex];
+    const remaining = raffleEntries.filter((_, index) => index !== winnerIndex);
+
+    setRaffleWinners((current) => [winner, ...current]);
+    setRaffleEntries(remaining);
+    setRaffleEntriesText(remaining.join('\n'));
+    setRaffleEvents((current) => [`Winner: ${winner}`, ...current].slice(0, 20));
+  }
+
+  function jumbleDuckEntries() {
+    if (!duckEntries.length) {
+      return;
+    }
+
+    const nextOrder = shuffleEntries(duckEntries);
+    setDuckEntries(nextOrder);
+    setDuckEntriesText(nextOrder.join('\n'));
+    setDuckEvents((current) => [`Jumbled ${nextOrder.length} duck entries at ${new Date().toLocaleTimeString()}`, ...current].slice(0, 20));
+  }
+
+  function runDuckRace() {
+    if (!duckEntries.length || duckRacing) {
+      return;
+    }
+
+    setDuckRacing(true);
+    setDuckWinner('');
+    setDuckEvents((current) => ['Duck race started!', ...current].slice(0, 20));
+
+    window.setTimeout(() => {
+      const winner = duckEntries[Math.floor(Math.random() * duckEntries.length)];
+      setDuckWinner(winner);
+      setDuckRacing(false);
+      setDuckEvents((current) => [`Race winner: ${winner}`, ...current].slice(0, 20));
+    }, 2200);
   }
 
   if (queryReplayId && replayData) {
@@ -464,6 +678,363 @@ export default function App() {
     );
   }
 
+  if (isHostView && !hostSection) {
+    return (
+      <div className="app-shell home-shell">
+        <main className="home-layout">
+          <section className="home-panel">
+            <img className="home-logo" src={logoUrl} alt="RAZZKINGS logo" />
+            <p className="eyebrow">Live Host Hub</p>
+            <h1 className="home-title">RAZZ KINGS</h1>
+            <p className="subtitle home-subtitle">Choose your live show format to launch the host controls.</p>
+            <div className="home-action-grid">
+              <button className="home-nav-button" type="button" onClick={() => navigateSection('raffle-wheel')}>
+                <span className="home-nav-number">#1</span>
+                <strong>Raffle Wheel</strong>
+              </button>
+              <button className="home-nav-button" type="button" onClick={() => navigateSection('card-games')}>
+                <span className="home-nav-number">#2</span>
+                <strong>Card Games</strong>
+              </button>
+              <button className="home-nav-button" type="button" onClick={() => navigateSection('duck-races')}>
+                <span className="home-nav-number">#3</span>
+                <strong>Duck Races</strong>
+              </button>
+            </div>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (isHostView && hostSection === 'raffle-wheel') {
+    const raffleEntriesLive = table?.modeId === 'raffle-wheel' ? (table.moduleState?.entries ?? []) : raffleEntries;
+    const raffleWinnersLive = table?.modeId === 'raffle-wheel' ? (table.moduleState?.winners ?? []) : raffleWinners;
+    const raffleEventsLive = table?.modeId === 'raffle-wheel'
+      ? (table.moduleState?.events ?? []).map((event) => event.text)
+      : raffleEvents;
+    const spectatorOnlyLink = table
+      ? `${table.baseUrl ?? apiBase}/?section=raffle-wheel&table=${table.id}&role=spectator&token=${table.spectatorJoinToken}`
+      : `${apiBase}/?section=raffle-wheel&role=spectator`;
+    return (
+      <div className="app-shell">
+        <main className="module-layout">
+          <section className="module-sidebar">
+            <div className="hero-top">
+              <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+              <div>
+                <p className="eyebrow">Raffle Wheel Host</p>
+                <h1 className="brand-title">RAZZKINGS Raffle Wheel</h1>
+                <p className="subtitle">Paste up to 100 entries, jumble as needed, then spin for winners.</p>
+              </div>
+            </div>
+            <div className="action-row">
+              <button className="ghost" type="button" onClick={() => navigateSection('')}>Back Home</button>
+              <button className="secondary" type="button" onClick={() => navigateSection('card-games')}>Open Card Games</button>
+              <button className="secondary" type="button" onClick={() => navigateSection('duck-races')}>Open Duck Races</button>
+            </div>
+            <div className="action-row">
+              <button className="primary" type="button" onClick={() => createModuleSession('raffle-wheel', 'RAZZKINGS Raffle Wheel')}>Create Live Raffle Session</button>
+            </div>
+            <label className="entries-label">
+              Entries (one per line, max 100)
+              <textarea
+                className="entries-box"
+                value={raffleEntriesText}
+                onChange={(event) => setRaffleEntriesText(event.target.value)}
+                placeholder={'Name 1\nName 2\nName 3'}
+              />
+            </label>
+            <p className="muted">Loaded entries: {raffleEntriesLive.length}/100</p>
+            <div className="action-row">
+              <button className="secondary" type="button" onClick={pushRaffleEntries}>Save Entries</button>
+              <button className="secondary" type="button" onClick={hostJumbleRaffle} disabled={!raffleEntriesLive.length}>Jumble Order</button>
+              <button className="primary" type="button" onClick={hostSpinRaffle} disabled={!raffleEntriesLive.length}>Spin Wheel</button>
+              <button className="ghost" type="button" onClick={finishModuleSession} disabled={!table}>Finish Session</button>
+            </div>
+            <div className="link-box">
+              <span>Spectator link</span>
+              <strong>{spectatorOnlyLink}</strong>
+              <span className="muted">Share this with spectators to watch live.</span>
+            </div>
+          </section>
+
+          <section className="module-stage">
+            <header className="table-head">
+              <div>
+                <p className="eyebrow">Live Panel</p>
+                <h2>Raffle Wheel Stage</h2>
+              </div>
+              <div className="status-pill">raffle</div>
+            </header>
+
+            <div className="host-feed-strip">
+              <div className="host-feed-text">
+                <strong>Host feed</strong>
+                <span>Start your camera and audio for live engagement</span>
+              </div>
+              <video className="media-preview" ref={localVideoRef} autoPlay playsInline muted />
+              <div className="media-actions">
+                <button className="secondary" type="button" onClick={enableMedia} disabled={mediaEnabled}>Start feed</button>
+                <button className="secondary" type="button" onClick={disableMedia} disabled={!mediaEnabled}>Stop feed</button>
+              </div>
+            </div>
+
+            <section className="wheel-panel">
+              <h3>Wheel Order</h3>
+              <div className="entry-chip-grid">
+                {raffleEntries.length
+                  ? raffleEntriesLive.map((entry, index) => (
+                    <span key={`${entry}-${index}`} className="entry-chip">{index + 1}. {entry}</span>
+                  ))
+                  : <p className="muted">Add entries to build the wheel.</p>}
+              </div>
+            </section>
+
+            <section className="winner-panel">
+              <h3>Winners</h3>
+              {raffleWinnersLive.length ? raffleWinnersLive.map((winner, index) => <p key={`${winner}-${index}`}>#{index + 1} {winner}</p>) : <p className="muted">No winners yet.</p>}
+            </section>
+          </section>
+
+          <aside className="module-feed">
+            <section className="panel-card">
+              <h3>Raffle Timeline</h3>
+              <div className="chat-feed">
+                {raffleEventsLive.length ? raffleEventsLive.map((event, index) => <p key={`${event}-${index}`}>{event}</p>) : <p className="muted">No events yet.</p>}
+              </div>
+              <div className="replay-box">
+                <span>Replay</span>
+                {table?.replayId ? <a href={`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`} target="_blank" rel="noreferrer">{`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`}</a> : <p className="muted">Finish module session to generate replay.</p>}
+              </div>
+            </section>
+          </aside>
+        </main>
+      </div>
+    );
+  }
+
+  if (isHostView && hostSection === 'duck-races') {
+    const duckEntriesLive = table?.modeId === 'duck-races' ? (table.moduleState?.entries ?? []) : duckEntries;
+    const duckEventsLive = table?.modeId === 'duck-races'
+      ? (table.moduleState?.events ?? []).map((event) => event.text)
+      : duckEvents;
+    const duckWinnerLive = table?.modeId === 'duck-races' ? (table.moduleState?.lastWinner ?? '') : duckWinner;
+    const spectatorOnlyLink = table
+      ? `${table.baseUrl ?? apiBase}/?section=duck-races&table=${table.id}&role=spectator&token=${table.spectatorJoinToken}`
+      : `${apiBase}/?section=duck-races&role=spectator`;
+    return (
+      <div className="app-shell">
+        <main className="module-layout">
+          <section className="module-sidebar">
+            <div className="hero-top">
+              <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+              <div>
+                <p className="eyebrow">Duck Race Host</p>
+                <h1 className="brand-title">RAZZKINGS Duck Races</h1>
+                <p className="subtitle">Build the duck lineup, jumble racers, and launch a live race.</p>
+              </div>
+            </div>
+            <div className="action-row">
+              <button className="ghost" type="button" onClick={() => navigateSection('')}>Back Home</button>
+              <button className="secondary" type="button" onClick={() => navigateSection('card-games')}>Open Card Games</button>
+              <button className="secondary" type="button" onClick={() => navigateSection('raffle-wheel')}>Open Raffle Wheel</button>
+            </div>
+            <div className="action-row">
+              <button className="primary" type="button" onClick={() => createModuleSession('duck-races', 'RAZZKINGS Duck Races')}>Create Live Duck Session</button>
+            </div>
+            <label className="entries-label">
+              Duck Entries (one per line, max 100)
+              <textarea
+                className="entries-box"
+                value={duckEntriesText}
+                onChange={(event) => setDuckEntriesText(event.target.value)}
+                placeholder={'Duck Team 1\nDuck Team 2\nDuck Team 3'}
+              />
+            </label>
+            <p className="muted">Loaded entries: {duckEntriesLive.length}/100</p>
+            <div className="action-row">
+              <button className="secondary" type="button" onClick={pushDuckEntries}>Save Entries</button>
+              <button className="secondary" type="button" onClick={hostJumbleDucks} disabled={!duckEntriesLive.length || duckRacing}>Jumble Order</button>
+              <button className="primary" type="button" onClick={hostRaceDucks} disabled={!duckEntriesLive.length || duckRacing}>
+                {duckRacing ? 'Racing...' : 'Start Race'}
+              </button>
+              <button className="ghost" type="button" onClick={finishModuleSession} disabled={!table}>Finish Session</button>
+            </div>
+            <div className="link-box">
+              <span>Spectator link</span>
+              <strong>{spectatorOnlyLink}</strong>
+              <span className="muted">Share this with spectators to watch live.</span>
+            </div>
+          </section>
+
+          <section className="module-stage">
+            <header className="table-head">
+              <div>
+                <p className="eyebrow">Live Panel</p>
+                <h2>Duck Waterpark Track</h2>
+              </div>
+              <div className="status-pill">duck race</div>
+            </header>
+
+            <div className="host-feed-strip">
+              <div className="host-feed-text">
+                <strong>Host feed</strong>
+                <span>Start your camera and audio for race commentary</span>
+              </div>
+              <video className="media-preview" ref={localVideoRef} autoPlay playsInline muted />
+              <div className="media-actions">
+                <button className="secondary" type="button" onClick={enableMedia} disabled={mediaEnabled}>Start feed</button>
+                <button className="secondary" type="button" onClick={disableMedia} disabled={!mediaEnabled}>Stop feed</button>
+              </div>
+            </div>
+
+            <section className="duck-track">
+              {duckEntriesLive.length ? duckEntriesLive.map((entry, index) => (
+                <div key={`${entry}-${index}`} className={`duck-lane ${duckRacing ? 'duck-lane-racing' : ''}`}>
+                  <span>🦆</span>
+                  <strong>{entry}</strong>
+                </div>
+              )) : <p className="muted">Add ducks to stage the race.</p>}
+            </section>
+
+            <section className="winner-panel">
+              <h3>Race Result</h3>
+              {duckWinnerLive ? <p className="duck-winner">Winner: {duckWinnerLive}</p> : <p className="muted">No winner yet.</p>}
+            </section>
+          </section>
+
+          <aside className="module-feed">
+            <section className="panel-card">
+              <h3>Duck Race Timeline</h3>
+              <div className="chat-feed">
+                {duckEventsLive.length ? duckEventsLive.map((event, index) => <p key={`${event}-${index}`}>{event}</p>) : <p className="muted">No events yet.</p>}
+              </div>
+              <div className="replay-box">
+                <span>Replay</span>
+                {table?.replayId ? <a href={`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`} target="_blank" rel="noreferrer">{`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`}</a> : <p className="muted">Finish module session to generate replay.</p>}
+              </div>
+            </section>
+          </aside>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isHostView && querySection === 'raffle-wheel') {
+    const raffleEntriesLive = table?.moduleState?.entries ?? [];
+    const raffleWinnersLive = table?.moduleState?.winners ?? [];
+    const raffleEventsLive = (table?.moduleState?.events ?? []).map((event) => event.text);
+
+    return (
+      <div className="app-shell">
+        <main className="module-layout">
+          {!isJoined ? (
+            <section className="module-sidebar">
+              <div className="hero-top">
+                <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+                <div>
+                  <p className="eyebrow">Spectator entry</p>
+                  <h1 className="brand-title">Raffle Wheel Live</h1>
+                </div>
+              </div>
+              <button className="primary" type="button" onClick={joinTable} disabled={!table}>Join as spectator</button>
+              {joinError ? <p className="error-text">{joinError}</p> : null}
+            </section>
+          ) : <section className="module-sidebar"><p className="muted">Connected as spectator.</p></section>}
+
+          <section className="module-stage">
+            <header className="table-head">
+              <h2>Raffle Wheel Live</h2>
+              <div className="status-pill">spectator</div>
+            </header>
+            <section className="wheel-panel">
+              <h3>Current Order</h3>
+              <div className="entry-chip-grid">
+                {raffleEntriesLive.length ? raffleEntriesLive.map((entry, index) => <span key={`${entry}-${index}`} className="entry-chip">{index + 1}. {entry}</span>) : <p className="muted">Waiting for host entries.</p>}
+              </div>
+            </section>
+            <section className="winner-panel">
+              <h3>Winners</h3>
+              {raffleWinnersLive.length ? raffleWinnersLive.map((winner, index) => <p key={`${winner}-${index}`}>#{index + 1} {winner}</p>) : <p className="muted">No winners yet.</p>}
+            </section>
+          </section>
+
+          <aside className="module-feed">
+            <section className="panel-card">
+              <h3>Timeline</h3>
+              <div className="chat-feed">
+                {raffleEventsLive.length ? raffleEventsLive.map((event, index) => <p key={`${event}-${index}`}>{event}</p>) : <p className="muted">No events yet.</p>}
+              </div>
+              <div className="replay-box">
+                <span>Replay</span>
+                {table?.replayId ? <a href={`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`} target="_blank" rel="noreferrer">{`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`}</a> : <p className="muted">Replay appears when host finishes.</p>}
+              </div>
+            </section>
+          </aside>
+        </main>
+      </div>
+    );
+  }
+
+  if (!isHostView && querySection === 'duck-races') {
+    const duckEntriesLive = table?.moduleState?.entries ?? [];
+    const duckWinnerLive = table?.moduleState?.lastWinner ?? '';
+    const duckEventsLive = (table?.moduleState?.events ?? []).map((event) => event.text);
+
+    return (
+      <div className="app-shell">
+        <main className="module-layout">
+          {!isJoined ? (
+            <section className="module-sidebar">
+              <div className="hero-top">
+                <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+                <div>
+                  <p className="eyebrow">Spectator entry</p>
+                  <h1 className="brand-title">Duck Race Live</h1>
+                </div>
+              </div>
+              <button className="primary" type="button" onClick={joinTable} disabled={!table}>Join as spectator</button>
+              {joinError ? <p className="error-text">{joinError}</p> : null}
+            </section>
+          ) : <section className="module-sidebar"><p className="muted">Connected as spectator.</p></section>}
+
+          <section className="module-stage">
+            <header className="table-head">
+              <h2>Duck Race Live</h2>
+              <div className="status-pill">spectator</div>
+            </header>
+            <section className="duck-track">
+              {duckEntriesLive.length ? duckEntriesLive.map((entry, index) => (
+                <div key={`${entry}-${index}`} className="duck-lane">
+                  <span>🦆</span>
+                  <strong>{entry}</strong>
+                </div>
+              )) : <p className="muted">Waiting for host racers.</p>}
+            </section>
+            <section className="winner-panel">
+              <h3>Race Result</h3>
+              {duckWinnerLive ? <p className="duck-winner">Winner: {duckWinnerLive}</p> : <p className="muted">No winner yet.</p>}
+            </section>
+          </section>
+
+          <aside className="module-feed">
+            <section className="panel-card">
+              <h3>Timeline</h3>
+              <div className="chat-feed">
+                {duckEventsLive.length ? duckEventsLive.map((event, index) => <p key={`${event}-${index}`}>{event}</p>) : <p className="muted">No events yet.</p>}
+              </div>
+              <div className="replay-box">
+                <span>Replay</span>
+                {table?.replayId ? <a href={`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`} target="_blank" rel="noreferrer">{`${table.baseUrl ?? apiBase}/?replay=${table.replayId}`}</a> : <p className="muted">Replay appears when host finishes.</p>}
+              </div>
+            </section>
+          </aside>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <main className={`app-layout ${isHostView ? 'host-mode' : 'join-mode'}`}>
@@ -478,6 +1049,12 @@ export default function App() {
               </div>
             </div>
 
+            <div className="section-switch-row">
+              <button className="ghost" type="button" onClick={() => navigateSection('')}>Home</button>
+              <button className="ghost" type="button" onClick={() => navigateSection('raffle-wheel')}>Raffle Wheel</button>
+              <button className="ghost" type="button" onClick={() => navigateSection('duck-races')}>Duck Races</button>
+            </div>
+
             <div className="form-grid">
               <label>
                 Game
@@ -485,7 +1062,7 @@ export default function App() {
                   value={config.modeId}
                   onChange={(event) => setConfig((current) => ({ ...current, modeId: event.target.value }))}
                 >
-                  {gameModes.map((gameMode) => (
+                  {gameModes.filter((gameMode) => cardModeIds.has(gameMode.id)).map((gameMode) => (
                     <option key={gameMode.id} value={gameMode.id}>
                       {gameMode.label}
                     </option>
@@ -694,7 +1271,7 @@ export default function App() {
                   {isHostView ? <SeatAvatar avatarUrl={avatarPreview} label="Dealer" /> : null}
                   <div className="card-stack center-stack">
                     {(stageState?.dealerHand ?? livePreview.dealerHand ?? []).length
-                      ? (stageState?.dealerHand ?? livePreview.dealerHand ?? []).map((card, index) => (
+                      ? (stageState?.dealerHand ?? []).map((card, index) => (
                         <CardView key={`dealer-${card.id}`} card={card} index={index} />
                       ))
                       : <SeatPlaceholder />}
@@ -705,7 +1282,7 @@ export default function App() {
                   <span>Community</span>
                   <div className="card-stack center-stack">
                     {(stageState?.communityCards ?? livePreview.communityCards ?? []).length
-                      ? (stageState?.communityCards ?? livePreview.communityCards ?? []).map((card, index) => (
+                      ? (stageState?.communityCards ?? []).map((card, index) => (
                         <CardView key={`community-${card.id}`} card={card} index={index} />
                       ))
                       : <SeatPlaceholder />}
@@ -759,8 +1336,13 @@ export default function App() {
                 </button>
               ))}
               {isHostView ? (
-                <button className="secondary" type="button" onClick={() => triggerAction('finish')} disabled={!isJoined || table?.phase !== 'live'}>
-                  Finish & save replay
+                <button className="secondary" type="button" onClick={() => triggerAction('next-hand')} disabled={!isJoined || table?.phase !== 'round-finished'}>
+                  Deal next hand
+                </button>
+              ) : null}
+              {isHostView ? (
+                <button className="secondary" type="button" onClick={() => triggerAction('finish')} disabled={!isJoined || table?.phase === 'finished'}>
+                  End tournament & save replay
                 </button>
               ) : null}
             </div>
@@ -913,4 +1495,39 @@ function getApiBaseUrl() {
   }
 
   return 'http://localhost:3001';
+}
+
+function normalizeSection(section) {
+  if (section === 'card-games') {
+    return 'card-games';
+  }
+
+  if (section === 'raffle-wheel') {
+    return 'raffle-wheel';
+  }
+
+  if (section === 'duck-races') {
+    return 'duck-races';
+  }
+
+  return '';
+}
+
+function extractEntries(text) {
+  return String(text ?? '')
+    .split('\n')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 100);
+}
+
+function shuffleEntries(entries) {
+  const next = [...entries];
+
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+  }
+
+  return next;
 }
