@@ -2,33 +2,63 @@
 
 Play-money casino table host for Texas Hold'em, blackjack, and classic poker.
 
-## Start
+## Quick Start
 
-1. Install dependencies with `npm install`.
-2. Start the host app with `npm start`.
-3. For development, use `npm run dev` to run the Vite client and desktop host together.
-4. Create a table from the host screen and share the generated player or spectator link.
-5. Build a distributable release with `npm run dist`.
-6. On Linux, run the beta artifact at `release/RAZZKINGS-0.1.0.AppImage`.
-7. Use `launch-beta.sh` or `RAZZKINGS.desktop` if you want a simple desktop launcher for the beta build.
-8. On Windows, use the NSIS installer in `release/` after building; it is configured to launch RAZZKINGS automatically when installation finishes.
+1. Install dependencies:
+	- `npm install`
+2. Start host app:
+	- `npm start`
+3. Create a table from host UI and share player/spectator links.
 
-## Included in this first implementation
+## Commands
 
-- Electron-based desktop host shell.
-- Dark table UI with the brand logo asset.
-- Host controls for game mode, starting chips, deck count, and max players.
-- Basic player or spectator join flow from a shared table link.
-- Socket-based chat scaffold and replay-friendly table state.
+- `npm start`: Build frontend and launch desktop host app.
+- `npm run dev`: Run Vite dev client + Electron host.
+- `npm run dist`: Build desktop release artifacts into `release/`.
+- `npm run tunnel:quick`: Start a free Cloudflare Quick Tunnel to `http://localhost:3001`.
+- `npm run host:public`: Run host app and Quick Tunnel together.
+- `npm run host:public:oneclick`: One-click public host launcher (auto tunnel URL detection + app launch).
+- `npm run setup:windows`: Guided Windows setup (install deps + create Desktop shortcut).
 
-## Release notes
+## Host Outside Your Network (Free)
 
-This first usable release is a host-only tabletop app: the dealer uses the host camera feed, players and spectators join with uploaded pictures, and finished sessions can be reopened with a replay link.
+Use Cloudflare Tunnel (free).
 
-Release artifacts are written to `release/` when you run `npm run dist`.
+Step-by-step setup guide:
 
-The Windows package is an auto-launching NSIS installer for the beta release.
+- [docs/hosting-public.md](docs/hosting-public.md)
 
-`npm start` now builds the frontend first and then launches the host app directly, so it can be used as the one-command local run path.
+### Fast Session Flow
 
-`RAZZKINGS.desktop` and `launch-beta.sh` are included for a simple Linux shortcut setup.
+1. On Windows (first-time setup), run `setup-public-host-windows.cmd`.
+2. After setup, use Desktop shortcut **RAZZKINGS Public Host**.
+3. Or run `npm run host:public:oneclick`.
+4. Create table.
+5. Share generated links/QR with players.
+
+### Windows Full Auto Setup
+
+1. Double-click `setup-public-host-windows.cmd`.
+2. Follow prompts for each step:
+	- install/check Node.js LTS,
+	- install/check cloudflared,
+	- run `npm install`,
+	- create Desktop shortcut.
+3. Launch with Desktop shortcut **RAZZKINGS Public Host**.
+
+The launcher will start the app with a Cloudflare public URL so outside-network users can join.
+
+### Manual Session Flow
+
+1. Run `npm run host:public:oneclick`.
+2. Create table.
+3. Share generated links/QR with players.
+
+## Release Artifacts
+
+`npm run dist` writes artifacts into `release/`.
+
+- Linux: `RAZZKINGS-<version>.AppImage`
+- Windows: NSIS/portable outputs depending on build mode
+
+Optional Linux launcher helpers are included as `launch-beta.sh` and `RAZZKINGS.desktop`.

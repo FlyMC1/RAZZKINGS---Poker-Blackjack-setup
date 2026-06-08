@@ -3,7 +3,7 @@
   "description": "Host-led play-money poker, blackjack, and classic poker table app.",
   "author": "FlyMC1",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -12,6 +12,10 @@
     "server": "node server/index.js",
     "build": "vite build",
     "dist": "npm run build && electron-builder",
+    "tunnel:quick": "cloudflared tunnel --url http://localhost:3001",
+    "host:public": "concurrently -k \"npm run start\" \"npm run tunnel:quick\"",
+    "host:public:oneclick": "node scripts/one-click-public-host.mjs",
+    "setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/setup-public-host.ps1",
     "preview": "vite preview",
     "lint": "eslint ."
   },
