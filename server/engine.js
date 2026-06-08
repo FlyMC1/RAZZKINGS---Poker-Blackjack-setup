@@ -50,6 +50,7 @@ export function shuffleDeck(deck) {
 
 export function createActiveSeats(players, startingChips, maxPlayers) {
   return [...players]
+    .filter((player) => (Number(player.chips) || startingChips) > 0)
     .sort((left, right) => (left.seatIndex ?? Number.MAX_SAFE_INTEGER) - (right.seatIndex ?? Number.MAX_SAFE_INTEGER))
     .slice(0, maxPlayers)
     .map((player, seatIndex) => ({
@@ -57,7 +58,7 @@ export function createActiveSeats(players, startingChips, maxPlayers) {
     socketId: player.id,
     name: player.name,
     seatIndex: Number.isInteger(player.seatIndex) ? player.seatIndex : seatIndex,
-    chips: startingChips,
+    chips: Number.isFinite(Number(player.chips)) ? Number(player.chips) : startingChips,
     hand: [],
     folded: false,
     stood: false,

@@ -84,6 +84,8 @@ app.post('/api/tables', (request, response) => {
     playerJoinToken: randomUUID(),
     spectatorJoinToken: randomUUID(),
     baseUrl: getHostBaseUrl(request, publicBaseUrl),
+    rounds: [],
+    roundNumber: 0,
     updatedAt: new Date().toISOString(),
   };
 
@@ -104,13 +106,21 @@ app.post('/api/tables/:tableId/start', (request, response) => {
     return;
   }
 
+  for (const player of table.players) {
+    if (!Number.isFinite(Number(player.chips))) {
+      player.chips = table.startingChips;
+    }
+  }
+
   table.gameState = initializeGame(table);
+  table.roundNumber += 1;
   table.phase = 'live';
   table.updatedAt = new Date().toISOString();
   table.preview = createPreviewFromGameState(table.gameState);
   table.log.push({
     id: randomUUID(),
     type: 'table-started',
+    roundNumber: table.roundNumber,
     timestamp: table.updatedAt,
   });
 
@@ -136,30 +146,7 @@ app.post('/api/tables/:tableId/action', async (request, response) => {
       return;
     }
 
-    table.updatedAt = new Date().toISOString();
-    table.preview = createPreviewFromGameState(table.gameState);
-    table.log.push({
-      id: randomUUID(),
-      type: 'table-finished',
-      timestamp: table.updatedAt,
-    });
-
-    const replayId = randomUUID();
-    const replay = {
-      id: replayId,
-      tableId: table.id,
-      tableName: table.tableName,
-      modeId: table.modeId,
-      finishedAt: table.updatedAt,
-      gameState: table.gameState,
-      log: table.log,
-      players: table.players,
-    };
-
-    await saveReplay(replay);
-    table.replayId = replayId;
-    table.replayUrl = `/replay/${replayId}`;
-    table.phase = 'finished';
+    await handleRoundCompletion(table, { forceFinish: true });
 
     io.to(table.id).emit('table:update', table);
     response.json(table);
@@ -184,22 +171,7 @@ app.post('/api/tables/:tableId/action', async (request, response) => {
   });
 
   if (table.gameState.finished) {
-    const replayId = randomUUID();
-    const replay = {
-      id: replayId,
-      tableId: table.id,
-      tableName: table.tableName,
-      modeId: table.modeId,
-      finishedAt: table.updatedAt,
-      gameState: table.gameState,
-      log: table.log,
-      players: table.players,
-    };
-
-    await saveReplay(replay);
-    table.replayId = replayId;
-    table.replayUrl = `/replay/${replayId}`;
-    table.phase = 'finished';
+    await handleRoundCompletion(table);
   }
 
   io.to(table.id).emit('table:update', table);
@@ -221,29 +193,7 @@ app.post('/api/tables/:tableId/finish', async (request, response) => {
     return;
   }
 
-  table.updatedAt = new Date().toISOString();
-  table.preview = createPreviewFromGameState(table.gameState);
-  table.log.push({
-    id: randomUUID(),
-    type: 'table-finished',
-    timestamp: table.updatedAt,
-  });
-
-  const replayId = randomUUID();
-  const replay = {
-    id: replayId,
-    tableId: table.id,
-    tableName: table.tableName,
-    modeId: table.modeId,
-    finishedAt: table.updatedAt,
-    gameState: table.gameState,
-    log: table.log,
-    players: table.players,
-  };
-
-  await saveReplay(replay);
-  table.replayId = replayId;
-  table.replayUrl = `/replay/${replayId}`;
+  await handleRoundCompletion(table, { forceFinish: true });
 
   io.to(table.id).emit('table:update', table);
   response.json(table);
@@ -313,6 +263,7 @@ io.on('connection', (socket) => {
         id: socket.id,
         name: name ?? `Player ${table.players.length + 1}`,
         avatarUrl: avatarUrl ?? null,
+        chips: table.startingChips,
         seatIndex: nextAvailableSeatIndex(table.players, table.maxPlayers),
       });
     }
@@ -341,30 +292,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      table.updatedAt = new Date().toISOString();
-      table.preview = createPreviewFromGameState(table.gameState);
-      table.log.push({
-        id: randomUUID(),
-        type: 'table-finished',
-        timestamp: table.updatedAt,
-      });
-
-      const replayId = randomUUID();
-      const replay = {
-        id: replayId,
-        tableId: table.id,
-        tableName: table.tableName,
-        modeId: table.modeId,
-        finishedAt: table.updatedAt,
-        gameState: table.gameState,
-        log: table.log,
-        players: table.players,
-      };
-
-      await saveReplay(replay);
-      table.replayId = replayId;
-      table.replayUrl = `/replay/${replayId}`;
-      table.phase = 'finished';
+      await handleRoundCompletion(table, { forceFinish: true });
 
       io.to(tableId).emit('table:update', table);
       return;
@@ -389,22 +317,7 @@ io.on('connection', (socket) => {
     });
 
     if (table.gameState.finished) {
-      const replayId = randomUUID();
-      const replay = {
-        id: replayId,
-        tableId: table.id,
-        tableName: table.tableName,
-        modeId: table.modeId,
-        finishedAt: table.updatedAt,
-        gameState: table.gameState,
-        log: table.log,
-        players: table.players,
-      };
-
-      await saveReplay(replay);
-      table.replayId = replayId;
-      table.replayUrl = `/replay/${replayId}`;
-      table.phase = 'finished';
+      await handleRoundCompletion(table);
     }
 
     io.to(tableId).emit('table:update', table);
@@ -580,4 +493,80 @@ function sanitizeBaseUrl(value) {
 
 function isLocalHostName(hostName) {
   return hostName === 'localhost' || hostName === '127.0.0.1' || hostName === '::1';
+}
+
+async function handleRoundCompletion(table, { forceFinish = false } = {}) {
+  if (!table.gameState) {
+    return;
+  }
+
+  table.updatedAt = new Date().toISOString();
+  table.rounds.push({
+    roundNumber: table.roundNumber,
+    completedAt: table.updatedAt,
+    gameState: JSON.parse(JSON.stringify(table.gameState)),
+  });
+
+  syncPlayerChipsFromRound(table);
+  const activePlayers = table.players.filter((player) => Number(player.chips) > 0);
+
+  table.log.push({
+    id: randomUUID(),
+    type: 'round-finished',
+    roundNumber: table.roundNumber,
+    activePlayers: activePlayers.map((player) => player.name),
+    timestamp: table.updatedAt,
+  });
+
+  if (!forceFinish && activePlayers.length > 1) {
+    table.gameState = initializeGame(table);
+    table.roundNumber += 1;
+    table.preview = createPreviewFromGameState(table.gameState);
+    table.phase = 'live';
+    table.log.push({
+      id: randomUUID(),
+      type: 'round-started',
+      roundNumber: table.roundNumber,
+      timestamp: table.updatedAt,
+    });
+    return;
+  }
+
+  table.phase = 'finished';
+  table.preview = createPreviewFromGameState(table.gameState);
+  table.log.push({
+    id: randomUUID(),
+    type: 'table-finished',
+    roundNumber: table.roundNumber,
+    timestamp: table.updatedAt,
+  });
+
+  const replayId = randomUUID();
+  const replay = {
+    id: replayId,
+    tableId: table.id,
+    tableName: table.tableName,
+    modeId: table.modeId,
+    finishedAt: table.updatedAt,
+    rounds: table.rounds,
+    finalGameState: table.gameState,
+    log: table.log,
+    players: table.players,
+    winner: activePlayers.length === 1 ? activePlayers[0].name : null,
+  };
+
+  await saveReplay(replay);
+  table.replayId = replayId;
+  table.replayUrl = `/replay/${replayId}`;
+}
+
+function syncPlayerChipsFromRound(table) {
+  for (const seat of table.gameState?.seats ?? []) {
+    const player = table.players.find((entry) => entry.id === seat.socketId);
+    if (!player) {
+      continue;
+    }
+
+    player.chips = seat.chips;
+  }
 }

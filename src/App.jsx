@@ -17,6 +17,23 @@ const initialConfig = {
 };
 
 const emojiBar = ['⭐', '🔥', '🎯', '🎲', '🃏', '💎'];
+const modeRules = {
+  blackjack: [
+    'Try to finish closer to 21 than the dealer without going over.',
+    'Use Hit for another card, Stand to lock your hand, Double to add a stronger wager and draw one final card.',
+    'Winning hands gain tokens and busted hands lose the round tokens.',
+  ],
+  'texas-holdem': [
+    'Each player gets 2 private cards and shares 5 community cards.',
+    'Use Fold, Check, Call, and Raise during each street until showdown.',
+    'Best 5-card hand wins the pot and token stacks carry into the next round.',
+  ],
+  'classic-poker': [
+    'Each player is dealt 5 cards and can choose draw or hold actions.',
+    'Betting actions use your visible token stack.',
+    'Best hand wins the pot, and rounds continue until one token winner remains.',
+  ],
+};
 
 export default function App() {
   const profileStorageKey = 'razzkings-profile';
@@ -38,6 +55,8 @@ export default function App() {
   const [spectatorQrCode, setSpectatorQrCode] = useState('');
   const [showPlayerQr, setShowPlayerQr] = useState(false);
   const [showSpectatorQr, setShowSpectatorQr] = useState(false);
+  const [betAmount, setBetAmount] = useState(10);
+  const [showRules, setShowRules] = useState(false);
 
   const queryTableId = urlParams.get('table');
   const queryReplayId = urlParams.get('replay');
@@ -71,6 +90,12 @@ export default function App() {
   const replayUrl = table?.replayId ? `${table.baseUrl ?? apiBase}/?replay=${table.replayId}` : null;
 
   const waitingLabel = queryRole === 'spectator' ? 'Watching table. Waiting for host to start.' : 'You are seated. Waiting for host to start.';
+  const showJoinPanel = !isHostView && !isJoined;
+  const ruleSet = modeRules[mode.id] ?? [];
+  const chipStandings = useMemo(
+    () => [...(table?.players ?? [])].sort((left, right) => Number(right.chips ?? 0) - Number(left.chips ?? 0)),
+    [table?.players],
+  );
 
   const displaySeats = useMemo(() => {
     if (!seatCount) {
@@ -240,6 +265,20 @@ export default function App() {
     const nextTable = await response.json();
     setTable({ ...nextTable, preview: buildPreviewHands(nextTable.modeId, nextTable.maxPlayers, nextTable.deckCount) });
     setChatFeed([]);
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    socket.emit('table:join', {
+      tableId: nextTable.id,
+      name: roomName,
+      role: 'player',
+      avatarUrl,
+      token: nextTable.playerJoinToken,
+    });
+
+    setIsJoined(true);
   }
 
   async function startTable() {
@@ -364,25 +403,30 @@ export default function App() {
     socket.emit('table:action', {
       tableId: table.id,
       action,
-      amount: 10,
+      amount: Number(betAmount) || 10,
     });
   }
 
   function sendChat(emoji = '⭐') {
-    if (!table?.id || !isJoined || !chatText.trim()) {
+    if (!table?.id || !isJoined) {
       return;
     }
 
+    const message = chatText.trim() || 'reacted';
+
     socket.emit('chat:message', {
       tableId: table.id,
-      message: chatText.trim(),
+      message,
       emoji,
     });
 
-    setChatText('');
+    if (chatText.trim()) {
+      setChatText('');
+    }
   }
 
   if (queryReplayId && replayData) {
+    const replayState = replayData.finalGameState ?? replayData.gameState;
     return (
       <div className="app-shell replay-screen">
         <section className="host-sidebar">
@@ -397,6 +441,7 @@ export default function App() {
           <div className="link-box">
             <span>Replay link</span>
             <strong>{`${apiBase}/?replay=${queryReplayId}`}</strong>
+            <span className="muted">Rounds captured: {replayData.rounds?.length ?? 1}</span>
           </div>
         </section>
         <section className="table-stage">
@@ -405,9 +450,9 @@ export default function App() {
             <div className="status-pill">finished</div>
           </header>
           <div className="table-felt">
-            <SeatCards label="Dealer" cards={replayData.gameState?.dealerHand ?? []} />
-            <SeatCards label="Board" cards={replayData.gameState?.communityCards ?? []} isBoard />
-            {(replayData.gameState?.seats ?? []).map((seat, index) => (
+            <SeatCards label="Dealer" cards={replayState?.dealerHand ?? []} />
+            <SeatCards label="Board" cards={replayState?.communityCards ?? []} isBoard />
+            {(replayState?.seats ?? []).map((seat, index) => (
               <SeatCards key={`replay-seat-${seat.id ?? index}`} label={seat.name ?? `Seat ${index + 1}`} cards={seat.hand ?? []} />
             ))}
           </div>
@@ -533,8 +578,8 @@ export default function App() {
               ) : null}
             </div>
           </section>
-        ) : (
-          <section className="join-panel">
+        ) : showJoinPanel ? (
+          <section className="join-panel join-panel-desktop">
             <div className="hero-top">
               <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
               <div>
@@ -563,9 +608,8 @@ export default function App() {
               {queryRole === 'spectator' ? 'Join as spectator' : 'Join and take seat'}
             </button>
             {joinError ? <p className="error-text">{joinError}</p> : null}
-            {isJoined && table?.phase === 'draft' ? <p className="muted waiting-text">{waitingLabel}</p> : null}
           </section>
-        )}
+        ) : null}
 
         <section className="table-stage">
           <header className="table-head">
@@ -573,8 +617,24 @@ export default function App() {
               <p className="eyebrow">{mode.label}</p>
               <h2>{table?.tableName ?? config.tableName}</h2>
             </div>
-            <div className="status-pill">{table?.phase ?? 'draft'}</div>
+            <div className="table-head-actions">
+              <button className="ghost" type="button" onClick={() => setShowRules((current) => !current)}>
+                {showRules ? 'Hide Rules' : 'Rules'}
+              </button>
+              <div className="status-pill">{table?.phase ?? 'draft'}</div>
+            </div>
           </header>
+
+          {showRules ? (
+            <section className="rules-panel">
+              <h3>How To Play {mode.label}</h3>
+              <ul>
+                {ruleSet.map((rule) => (
+                  <li key={rule}>{rule}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <div className="host-feed-strip">
             <div className="host-feed-text">
@@ -589,6 +649,39 @@ export default function App() {
               </div>
             ) : null}
           </div>
+
+          {showJoinPanel ? (
+            <section className="join-panel join-panel-mobile">
+              <div className="hero-top">
+                <img className="brand-logo" src={logoUrl} alt="RAZZKINGS logo" />
+                <div>
+                  <p className="eyebrow">{queryRole === 'spectator' ? 'Spectator entry' : 'Player entry'}</p>
+                  <h1 className="brand-title">Join Table</h1>
+                  <p className="subtitle">Enter your name and optional picture, then take your seat.</p>
+                </div>
+              </div>
+              <div className="form-grid">
+                <label className="wide">
+                  Display name
+                  <input value={roomName} onChange={(event) => setRoomName(event.target.value)} placeholder="Your name" />
+                </label>
+                <label className="wide">
+                  Picture (optional)
+                  <input type="file" accept="image/*" onChange={handleAvatarUpload} />
+                </label>
+                {avatarPreview ? (
+                  <div className="avatar-preview wide">
+                    <img src={avatarPreview} alt="Player avatar preview" />
+                    <span>This image will only appear on your own seat.</span>
+                  </div>
+                ) : null}
+              </div>
+              <button className="primary" type="button" onClick={joinTable} disabled={!table || isJoined}>
+                {queryRole === 'spectator' ? 'Join as spectator' : 'Join and take seat'}
+              </button>
+              {joinError ? <p className="error-text">{joinError}</p> : null}
+            </section>
+          ) : null}
 
           <div className="table-felt">
             <SeatCards label="Dealer" cards={stageState?.dealerHand ?? livePreview.dealerHand ?? []} avatarUrl={isHostView ? avatarPreview : ''} />
@@ -610,6 +703,8 @@ export default function App() {
           <footer className="player-hand-bar">
             <div>
               <strong>{mySeat?.name ?? 'Your hand'}</strong>
+              <p className="muted">Your tokens: {Number(mySeat?.chips ?? 0)}</p>
+              <p className="muted">Pot: {Number(stageState?.pot ?? 0)} | Round: {table?.roundNumber ?? 0}</p>
               <p className="muted">{isJoined ? (isMyTurn ? 'Your turn now.' : 'Waiting for your turn.') : 'Join table to take actions.'}</p>
             </div>
             <div className="card-stack hand-stack">
@@ -618,6 +713,16 @@ export default function App() {
                 : <SeatPlaceholder text="Your cards appear here" />}
             </div>
             <div className="button-stack hand-actions">
+              <label className="bet-input">
+                Bet / Raise Tokens
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.max(1, Number(mySeat?.chips ?? 1))}
+                  value={betAmount}
+                  onChange={(event) => setBetAmount(Number(event.target.value) || 1)}
+                />
+              </label>
               {mode.actionSet.map((action) => (
                 <button key={action} className="ghost" type="button" onClick={() => triggerAction(action)} disabled={!isJoined || !isMyTurn || table?.phase !== 'live'}>
                   {action}
@@ -630,6 +735,20 @@ export default function App() {
               ) : null}
             </div>
           </footer>
+
+          <section className="token-board">
+            <h3>Token Standings</h3>
+            <div className="token-list">
+              {chipStandings.length
+                ? chipStandings.map((player) => (
+                  <div key={player.id} className="token-item">
+                    <span>{player.name}</span>
+                    <strong>{Number(player.chips ?? 0)} tokens</strong>
+                  </div>
+                ))
+                : <p className="muted">No players seated yet.</p>}
+            </div>
+          </section>
         </section>
 
         <aside className="chat-lane">
