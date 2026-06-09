@@ -2,8 +2,12 @@
   "name": "razzkings-poker-blackjack-setup",
   "description": "Host-led play-money poker, blackjack, and classic poker table app.",
   "author": "FlyMC1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FlyMC1/RAZZKINGS---Poker-Blackjack-setup.git"
+  },
   "private": true,
-  "version": "0.3.8",
+  "version": "0.3.9",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -46,10 +50,13 @@
       "electron/**",
       "server/**",
       "shared/**",
+      "scripts/**",
+      "*.cmd",
       "README.md",
       "package.json"
     ],
     "asar": true,
+    "icon": "build/icon.png",
     "mac": {
       "target": [
         "dmg"
@@ -57,21 +64,47 @@
     },
     "win": {
       "target": [
+        "nsis-web",
         "nsis"
       ],
+      "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": true,
-      "runAfterFinish": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "allowElevation": true
+      "runAfterFinish": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
+      "allowElevation": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "include": "build/installer.nsh",
+      "artifactName": "RAZZKINGS-Setup-${version}.${ext}"
+    },
+    "nsisWeb": {
+      "oneClick": true,
+      "runAfterFinish": false,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
+      "allowElevation": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "include": "build/installer.nsh",
+      "artifactName": "RAZZKINGS-Web-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [
         "AppImage"
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "FlyMC1",
+        "repo": "RAZZKINGS---Poker-Blackjack-setup"
+      }
+    ]
   }
 }

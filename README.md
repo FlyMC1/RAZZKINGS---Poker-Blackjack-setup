@@ -20,6 +20,8 @@ Play-money casino table host for Texas Hold'em, blackjack, and classic poker.
 - `npm run host:public:oneclick`: One-click public host launcher (auto tunnel URL detection + app launch).
 - `npm run setup:windows`: Guided Windows setup (install deps + create Desktop shortcut).
 
+Windows release builds now include a branded NSIS web installer that downloads the app payload, installs the app, and creates Desktop/Start Menu shortcuts from the installed files.
+
 ## Tournament Hand Flow
 
 - Card Games now support explicit hand progression.
@@ -42,9 +44,9 @@ Step-by-step setup guide:
 
 ### Fast Session Flow
 
-1. On Windows (first-time setup), run `setup-public-host-windows.cmd`.
-2. After setup, use Desktop shortcut **RAZZKINGS Public Host**.
-3. Or run `npm run host:public:oneclick`.
+1. On Windows, download and run the latest `RAZZKINGS Web Setup` installer.
+2. The installer downloads the app payload, installs the app, and creates a Desktop shortcut.
+3. Launch from the Desktop shortcut **RAZZKINGS** or run `npm run host:public:oneclick` for the launcher path.
 4. Create table.
 5. Share generated links/QR with players.
 
@@ -56,16 +58,12 @@ The top-right host badge shows network availability:
 
 ### Windows Full Auto Setup
 
-1. Double-click `setup-public-host-windows.cmd`.
-2. A setup window should immediately show the RAZZKINGS setup banner and project folder.
-3. Setup will automatically:
-	- install/check Node.js LTS,
-	- install/check cloudflared,
-	- run `npm install`,
-	- create Desktop shortcut.
-4. Launch with Desktop shortcut **RAZZKINGS Public Host**.
+1. Double-click the Windows web installer (`RAZZKINGS Web Setup`).
+2. The installer downloads the app payload and installs it into the chosen location.
+3. Desktop and Start Menu shortcuts are created from the installed app files.
+4. Launch with Desktop shortcut **RAZZKINGS**.
 
-If the setup window opens but does not print the setup banner, extract the full project zip first and run `setup-public-host-windows.cmd` from the extracted folder, not from inside the compressed zip preview.
+If you want the separate host/bootstrap path, keep the extracted project folder and use `setup-public-host-windows.cmd` only for first-run dependency setup.
 
 The launcher will start the app with a Cloudflare public URL so outside-network users can join.
 The launcher window now prints the project folder and dependency checks immediately. If it appears idle, use the latest `RAZZKINGS-public-host-project-<version>.zip`, extract it fully, and run the `.cmd` file from the extracted folder.
@@ -81,6 +79,6 @@ The launcher window now prints the project folder and dependency checks immediat
 `npm run dist` writes artifacts into `release/`.
 
 - Linux: `RAZZKINGS-<version>.AppImage`
-- Windows: NSIS/portable outputs depending on build mode
+- Windows: `RAZZKINGS Web Setup` and `RAZZKINGS Setup` installers, plus the packaged app output
 
 Optional Linux launcher helpers are included as `launch-beta.sh` and `RAZZKINGS.desktop`.
