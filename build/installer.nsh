@@ -1,4 +1,4 @@
 !macro customInstall
-  CreateShortCut "$DESKTOP\RAZZKINGS.lnk" "$SYSDIR\cmd.exe" '/c ""$INSTDIR\start-public-host.cmd""' "$appExe" 0 SW_SHOWNORMAL "" "RAZZKINGS"
-  ExecShell "open" "$INSTDIR\start-public-host.cmd"
+  CreateShortCut "$DESKTOP\RAZZKINGS.lnk" "$appExe" "--public-host" "$appExe" 0 "" "" "RAZZKINGS"
+  Exec '"$appExe" --public-host'
 !macroend
