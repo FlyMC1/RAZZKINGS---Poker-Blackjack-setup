@@ -695,8 +695,17 @@ export function startServer(port = process.env.PORT || 3001) {
 
   serverStarted = true;
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const onError = (error) => {
+      serverStarted = false;
+      httpServer.off('error', onError);
+      reject(error);
+    };
+
+    httpServer.once('error', onError);
+
     httpServer.listen(port, () => {
+      httpServer.off('error', onError);
       console.log(`RAZZKINGS server listening on http://localhost:${port}`);
 
       void cleanupExpiredReplays();

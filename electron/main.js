@@ -20,8 +20,6 @@ async function ensureServerStarted() {
 }
 
 async function createWindow() {
-  await ensureServerStarted();
-
   const builtIndexPath = join(app.getAppPath(), 'dist', 'index.html');
   const shouldUseDevServer = isDev && !existsSync(builtIndexPath);
 
@@ -105,6 +103,9 @@ function stopPublicHostTunnel() {
 
 app.whenReady().then(async () => {
   startPublicHostTunnel();
+  void ensureServerStarted().catch((error) => {
+    console.warn(`[startup] local server failed: ${error?.message || 'unknown error'}`);
+  });
   await createWindow();
 
   app.on('activate', () => {
