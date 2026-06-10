@@ -7,7 +7,7 @@
     "url": "https://github.com/FlyMC1/RAZZKINGS---Poker-Blackjack-setup.git"
   },
   "private": true,
-  "version": "0.3.11",
+  "version": "0.3.12",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
