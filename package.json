@@ -7,7 +7,7 @@
     "url": "https://github.com/FlyMC1/RAZZKINGS---Poker-Blackjack-setup.git"
   },
   "private": true,
-  "version": "0.3.14",
+  "version": "0.3.15",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -71,27 +71,14 @@
     },
     "nsis": {
       "oneClick": false,
-      "runAfterFinish": false,
-      "createDesktopShortcut": false,
-      "createStartMenuShortcut": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
       "allowElevation": true,
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "include": "build/installer.nsh",
       "artifactName": "RAZZKINGS-Setup-${version}.${ext}"
-    },
-    "nsisWeb": {
-      "oneClick": true,
-      "runAfterFinish": false,
-      "createDesktopShortcut": false,
-      "createStartMenuShortcut": false,
-      "allowElevation": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
-      "include": "build/installer.nsh",
-      "artifactName": "RAZZKINGS-Web-Setup-${version}.${ext}"
     },
     "linux": {
       "target": [

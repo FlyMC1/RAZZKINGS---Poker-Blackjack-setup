@@ -1,6 +1,6 @@
 # Public Hosting Guide (Free)
 
-This guide sets up RAZZKINGS so players can join from outside your local network using Cloudflare Tunnel (free).
+This guide sets up optional public hosting for RAZZKINGS so players can join from outside your local network using Cloudflare Tunnel (free). The Windows installer itself sets up local/LAN play by default.
 
 ## What Is Already Set Up In This Repo
 
@@ -31,13 +31,13 @@ Tradeoff:
 
 ### Windows
 
-Recommended one-click setup:
+Recommended local installation:
 
-1. Download and double-click the latest `RAZZKINGS Web Setup` installer.
-2. The installer downloads the app payload, installs the app, and creates shortcuts.
+1. Download and double-click the latest `RAZZKINGS Setup` installer.
+2. The installer installs the app locally and creates shortcuts.
 3. Launch from Desktop shortcut **RAZZKINGS**.
 
-If you still want to use the repository bootstrap path, extract the full project zip first and run `setup-public-host-windows.cmd` from the extracted folder. Do not run it from inside the Windows compressed-folder preview.
+Public hosting is optional after installation. If you want to open the app outside your network, use the launcher options below.
 
 Terminal alternative:
 
